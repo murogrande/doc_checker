@@ -1,0 +1,5 @@
+# Core dependencies
+PyYAML>=6.0
+
+# Optional for async link checking (recommended)
+aiohttp>=3.8

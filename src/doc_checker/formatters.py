@@ -1,0 +1,75 @@
+"""Report formatting utilities."""
+
+from __future__ import annotations
+
+from doc_checker.models import DriftReport
+
+
+def format_report(report: DriftReport) -> str:
+    """Format drift report as text."""
+    lines = ["=" * 60, "DOCUMENTATION DRIFT REPORT", "=" * 60, ""]
+
+    if report.missing_in_docs:
+        lines.append(f"Missing from docs ({len(report.missing_in_docs)}):")
+        for item in report.missing_in_docs:
+            lines.append(f"  - {item}")
+        lines.append("")
+
+    if report.signature_mismatches:
+        lines.append(f"Signature mismatches ({len(report.signature_mismatches)}):")
+        for mismatch in report.signature_mismatches:
+            lines.append(f"  - {mismatch['name']}: {mismatch['issue']}")
+        lines.append("")
+
+    if report.broken_references:
+        lines.append(f"Broken references ({len(report.broken_references)}):")
+        for broken_ref in report.broken_references:
+            lines.append(f"  - {broken_ref}")
+        lines.append("")
+
+    if report.broken_external_links:
+        lines.append(f"Broken external links ({len(report.broken_external_links)}):")
+        for link_info in report.broken_external_links:
+            status = link_info.get("status", "unknown")
+            url = link_info.get("url", "unknown")
+            location = link_info.get("location", "unknown")
+            lines.append(f"  {location}: {url} (status: {status})")
+        lines.append("")
+
+    if report.broken_local_links:
+        lines.append(f"Broken local links ({len(report.broken_local_links)}):")
+        for link_info in report.broken_local_links:
+            path = link_info.get("path", "unknown")
+            location = link_info.get("location", "unknown")
+            reason = link_info.get("reason", "")
+            if reason:
+                lines.append(f"  {location}: {path} ({reason})")
+            else:
+                lines.append(f"  {location}: {path}")
+        lines.append("")
+
+    if report.broken_mkdocs_paths:
+        lines.append(f"Broken mkdocs.yml paths ({len(report.broken_mkdocs_paths)}):")
+        for path_info in report.broken_mkdocs_paths:
+            path = path_info.get("path", "unknown")
+            location = path_info.get("location", "mkdocs.yml")
+            lines.append(f"  {location}: {path}")
+        lines.append("")
+
+    if report.undocumented_params:
+        lines.append(f"Undocumented parameters ({len(report.undocumented_params)}):")
+        for undoc_param in report.undocumented_params:
+            lines.append(f"  - {undoc_param['name']}: {undoc_param['params']}")
+        lines.append("")
+
+    if report.warnings:
+        lines.append(f"Warnings ({len(report.warnings)}):")
+        for item in report.warnings:
+            lines.append(f"  - {item}")
+        lines.append("")
+
+    if not report.has_issues():
+        lines.append("No documentation drift detected.")
+
+    lines.append("=" * 60)
+    return "\n".join(lines)
