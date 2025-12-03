@@ -44,7 +44,7 @@ class LinkChecker:
     ) -> list[LinkCheckResult]:
         """Async checking with aiohttp."""
         unique = self._deduplicate(links)
-        filtered = [l for l in unique if not self._should_skip(l.url, verbose)]
+        filtered = [link for link in unique if not self._should_skip(link.url, verbose)]
 
         semaphore = asyncio.Semaphore(self.max_concurrent)
         connector = aiohttp.TCPConnector(limit=self.max_concurrent)
@@ -52,7 +52,9 @@ class LinkChecker:
         async with aiohttp.ClientSession(
             connector=connector, headers={"User-Agent": self.USER_AGENT}
         ) as session:
-            tasks = [self._check_one(session, link, semaphore, verbose) for link in filtered]
+            tasks = [
+                self._check_one(session, link, semaphore, verbose) for link in filtered
+            ]
             return await asyncio.gather(*tasks)
 
     async def _check_one(
@@ -94,11 +96,17 @@ class LinkChecker:
                         link=link, status_code=status, error=None, is_broken=status >= 400
                     )
             except asyncio.TimeoutError:
-                return LinkCheckResult(link=link, status_code=None, error="Timeout", is_broken=True)
+                return LinkCheckResult(
+                    link=link, status_code=None, error="Timeout", is_broken=True
+                )
             except aiohttp.ClientError as e:
-                return LinkCheckResult(link=link, status_code=None, error=str(e), is_broken=True)
+                return LinkCheckResult(
+                    link=link, status_code=None, error=str(e), is_broken=True
+                )
             except Exception as e:
-                return LinkCheckResult(link=link, status_code=None, error=str(e), is_broken=True)
+                return LinkCheckResult(
+                    link=link, status_code=None, error=str(e), is_broken=True
+                )
 
     def _check_sync(
         self, links: list[ExternalLink], verbose: bool
@@ -124,27 +132,39 @@ class LinkChecker:
                     status = response.getcode()
                     results.append(
                         LinkCheckResult(
-                            link=link, status_code=status, error=None, is_broken=status >= 400
+                            link=link,
+                            status_code=status,
+                            error=None,
+                            is_broken=status >= 400,
                         )
                     )
             except urllib.error.HTTPError as e:
                 if e.code in self.ACCEPTABLE_STATUS:
                     results.append(
-                        LinkCheckResult(link=link, status_code=e.code, error=None, is_broken=False)
+                        LinkCheckResult(
+                            link=link, status_code=e.code, error=None, is_broken=False
+                        )
                     )
                 else:
                     results.append(
                         LinkCheckResult(
-                            link=link, status_code=e.code, error=str(e.reason), is_broken=True
+                            link=link,
+                            status_code=e.code,
+                            error=str(e.reason),
+                            is_broken=True,
                         )
                     )
             except urllib.error.URLError as e:
                 results.append(
-                    LinkCheckResult(link=link, status_code=None, error=str(e.reason), is_broken=True)
+                    LinkCheckResult(
+                        link=link, status_code=None, error=str(e.reason), is_broken=True
+                    )
                 )
             except Exception as e:
                 results.append(
-                    LinkCheckResult(link=link, status_code=None, error=str(e), is_broken=True)
+                    LinkCheckResult(
+                        link=link, status_code=None, error=str(e), is_broken=True
+                    )
                 )
 
         return results

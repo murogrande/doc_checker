@@ -44,4 +44,6 @@ warn_unused_configs = true
 [tool.ruff]
 line-length = 90
 target-version = "py39"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
