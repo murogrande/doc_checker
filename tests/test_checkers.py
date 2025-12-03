@@ -50,21 +50,25 @@ def test_function(x: int, y: int = 10) -> int:
     docs_dir.mkdir()
 
     index_md = docs_dir / "index.md"
-    index_md.write_text("""
+    index_md.write_text(
+        """
 # Documentation
 
 ::: test_pkg.TestClass
 
 External link: [Example](https://example.com)
 Local link: [Script](../script.py)
-""")
+"""
+    )
 
     # Create mkdocs.yml
     mkdocs_yml = tmp_path / "mkdocs.yml"
-    mkdocs_yml.write_text("""
+    mkdocs_yml.write_text(
+        """
 nav:
   - Home: index.md
-""")
+"""
+    )
 
     # Add to sys.path
     sys.path.insert(0, str(tmp_path))

@@ -11,7 +11,7 @@ from doc_checker.link_checker import LinkChecker
 from doc_checker.models import ExternalLink
 
 try:
-    import aiohttp
+    import aiohttp  # noqa: F401
 
     AIOHTTP_AVAILABLE = True
 except ImportError:
@@ -80,9 +80,7 @@ class TestLinkChecker:
         semaphore.__aenter__.return_value = None
         semaphore.__aexit__.return_value = None
 
-        result = await checker._check_one(
-            mock_session, sample_links[0], semaphore, False
-        )
+        result = await checker._check_one(mock_session, sample_links[0], semaphore, False)
 
         assert result.is_broken is False
         assert result.status_code == 200
@@ -106,9 +104,7 @@ class TestLinkChecker:
         semaphore.__aenter__.return_value = None
         semaphore.__aexit__.return_value = None
 
-        result = await checker._check_one(
-            mock_session, sample_links[0], semaphore, False
-        )
+        result = await checker._check_one(mock_session, sample_links[0], semaphore, False)
 
         assert result.is_broken is True
         assert result.status_code == 404

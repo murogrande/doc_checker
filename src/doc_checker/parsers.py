@@ -87,7 +87,10 @@ class MarkdownParser:
                     ):
                         links.append(
                             ExternalLink(
-                                url=url, text="", file_path=file_path, line_number=line_num
+                                url=url,
+                                text="",
+                                file_path=file_path,
+                                line_number=line_num,
                             )
                         )
         except Exception as e:
@@ -120,7 +123,10 @@ class MarkdownParser:
                     ):
                         links.append(
                             ExternalLink(
-                                url=url, text="", file_path=file_path, line_number=line_num
+                                url=url,
+                                text="",
+                                file_path=file_path,
+                                line_number=line_num,
                             )
                         )
         except Exception as e:
@@ -161,7 +167,7 @@ class YamlParser:
         if not self.mkdocs_path.exists():
             return None
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
 
             config = yaml.safe_load(self.mkdocs_path.read_text())
             if "nav" not in config:
@@ -179,7 +185,7 @@ class YamlParser:
         if not self.mkdocs_path.exists():
             return []
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
 
             config = yaml.safe_load(self.mkdocs_path.read_text())
             if "nav" not in config:
