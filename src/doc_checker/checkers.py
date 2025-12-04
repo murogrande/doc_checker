@@ -41,9 +41,26 @@ class DriftDetector:
         self.link_checker = LinkChecker()
 
     def check_all(
-        self, check_external_links: bool = False, verbose: bool = False
+        self,
+        check_external_links: bool = False,
+        check_quality: bool = False,
+        quality_backend: str = "ollama",
+        quality_model: str | None = None,
+        quality_api_key: str | None = None,
+        quality_sample_rate: float = 1.0,
+        verbose: bool = False,
     ) -> DriftReport:
-        """Run all checks."""
+        """Run all checks.
+
+        Args:
+            check_external_links: Check external HTTP links (slow)
+            check_quality: Run LLM quality checks
+            quality_backend: "ollama" or "openai"
+            quality_model: Model name (uses defaults if None)
+            quality_api_key: API key for cloud backends
+            quality_sample_rate: Check only this fraction of APIs (0.0-1.0)
+            verbose: Print progress
+        """
         report = DriftReport()
 
         self._check_api_coverage(report)
@@ -54,6 +71,16 @@ class DriftDetector:
 
         if check_external_links:
             self._check_external_links(report, verbose)
+
+        if check_quality:
+            self._check_quality(
+                report,
+                quality_backend,
+                quality_model,
+                quality_api_key,
+                quality_sample_rate,
+                verbose,
+            )
 
         return report
 
@@ -212,3 +239,35 @@ class DriftDetector:
                         "text": result.link.text,
                     }
                 )
+
+    def _check_quality(
+        self,
+        report: DriftReport,
+        backend: str,
+        model: str | None,
+        api_key: str | None,
+        sample_rate: float,
+        verbose: bool,
+    ) -> None:
+        """Check documentation quality using LLM."""
+        try:
+            from doc_checker.llm_checker import QualityChecker
+        except ImportError as e:
+            report.warnings.append(
+                f"Quality checks skipped: {e}. "
+                "Install with: pip install doc-checker[llm]"
+            )
+            return
+
+        try:
+            checker = QualityChecker(self.root_path, backend, model, api_key)
+        except (ImportError, RuntimeError, ValueError) as e:
+            report.warnings.append(f"Quality checks skipped: {e}")
+            return
+
+        if verbose:
+            print(f"Running LLM quality checks (backend: {backend})...")
+
+        for module_name in self.modules:
+            issues = checker.check_module_quality(module_name, verbose, sample_rate)
+            report.quality_issues.extend(issues)

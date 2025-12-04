@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from doc_checker.models import DriftReport
 
 
@@ -61,6 +63,36 @@ def format_report(report: DriftReport) -> str:
         for undoc_param in report.undocumented_params:
             lines.append(f"  - {undoc_param['name']}: {undoc_param['params']}")
         lines.append("")
+
+    if report.quality_issues:
+        lines.append(f"Quality issues ({len(report.quality_issues)}):")
+        lines.append("")
+
+        # Group by severity
+        by_severity: dict[str, list[Any]] = {
+            "critical": [],
+            "warning": [],
+            "suggestion": [],
+        }
+        for issue in report.quality_issues:
+            by_severity[issue.severity].append(issue)
+
+        for severity in ["critical", "warning", "suggestion"]:
+            issues = by_severity[severity]
+            if not issues:
+                continue
+
+            severity_icon = {"critical": "✘", "warning": "⚠", "suggestion": "ℹ"}
+            lines.append(
+                f"  {severity_icon[severity]} {severity.upper()} ({len(issues)}):"
+            )  # noqa: E501
+            for issue in issues:
+                lines.append(f"    {issue.api_name} [{issue.category}]")
+                lines.append(f"      Issue: {issue.message}")
+                lines.append(f"      Fix: {issue.suggestion}")
+                if issue.line_reference:
+                    lines.append(f"      Text: {issue.line_reference}")
+                lines.append("")
 
     if report.warnings:
         lines.append(f"Warnings ({len(report.warnings)}):")
