@@ -59,9 +59,9 @@ doc-checker --check-all --json --root .                # JSON output
 - Optional dependencies: [async] for aiohttp, [dev] for testing/linting
 
 **pre-commit hooks:**
-- trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-added-large-files
-- black, ruff (--fix), mypy (with types-PyYAML, aiohttp stubs)
-- pytest (fast tests, excludes slow integration)
+- trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-added-large-files, check-merge-conflict, debug-statements
+- black, ruff (--fix), mypy (with types-PyYAML, aiohttp stubs, excludes tests/)
+- pytest (-v --tb=short -x: verbose, short traceback, stop at first failure)
 
 **GitHub Actions (CI):**
 - lint job: black --check, ruff check, mypy
