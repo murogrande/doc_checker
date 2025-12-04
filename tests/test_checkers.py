@@ -211,3 +211,113 @@ class TestDriftDetector:
         report = detector.check_all()
 
         assert report.has_issues() is False
+
+
+class TestQualityChecks:
+    """Tests for LLM quality checks integration."""
+
+    def test_check_quality_disabled_by_default(self, test_project: Path):
+        """Test quality checks not run by default."""
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        assert len(report.quality_issues) == 0
+
+    def test_check_quality_missing_dependency(self, test_project: Path):
+        """Test quality checks gracefully handle missing dependencies."""
+        from unittest.mock import patch
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        with patch("doc_checker.checkers.importlib.import_module") as mock_import:
+            mock_import.side_effect = ImportError("No module named 'ollama'")
+            report = detector.check_all(check_quality=True)
+
+        # Should add warning, not crash
+        assert len(report.warnings) > 0
+        assert any("Quality checks skipped" in w for w in report.warnings)
+
+    def test_check_quality_enabled(self, test_project: Path):
+        """Test quality checks run when enabled."""
+        from unittest.mock import MagicMock, patch
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        # Mock the quality checker
+        mock_checker = MagicMock()
+        mock_checker.check_module_quality.return_value = [
+            MagicMock(
+                api_name="test_pkg.test_function",
+                severity="warning",
+                category="grammar",
+                message="Test issue",
+                suggestion="Fix it",
+                line_reference="test",
+            )
+        ]
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+            mock_checker_class.return_value = mock_checker
+            report = detector.check_all(
+                check_quality=True,
+                quality_backend="ollama",
+                quality_model="qwen2.5:3b",
+            )
+
+        assert len(report.quality_issues) == 1
+        assert report.quality_issues[0].api_name == "test_pkg.test_function"
+
+    def test_check_quality_with_sample_rate(self, test_project: Path):
+        """Test quality checks with sampling."""
+        from unittest.mock import MagicMock, patch
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        mock_checker = MagicMock()
+        mock_checker.check_module_quality.return_value = []
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+            mock_checker_class.return_value = mock_checker
+            detector.check_all(check_quality=True, quality_sample_rate=0.5, verbose=True)
+
+        # Verify sample_rate was passed
+        mock_checker.check_module_quality.assert_called_with("test_pkg", True, 0.5)
+
+    def test_check_quality_backend_error(self, test_project: Path):
+        """Test quality checks handle backend initialization errors."""
+        from unittest.mock import patch
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+            mock_checker_class.side_effect = RuntimeError("Ollama not running")
+            report = detector.check_all(check_quality=True)
+
+        # Should add warning, not crash
+        assert len(report.warnings) > 0
+        assert any("Ollama not running" in w for w in report.warnings)
+
+    def test_quality_issues_in_has_issues(self, test_project: Path):
+        """Test quality issues contribute to has_issues()."""
+        from unittest.mock import MagicMock, patch
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        mock_checker = MagicMock()
+        mock_checker.check_module_quality.return_value = [
+            MagicMock(
+                api_name="test",
+                severity="critical",
+                category="params",
+                message="Missing param",
+                suggestion="Add it",
+                line_reference=None,
+            )
+        ]
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+            mock_checker_class.return_value = mock_checker
+            report = detector.check_all(check_quality=True)
+
+        assert report.has_issues() is True
+        assert len(report.quality_issues) > 0

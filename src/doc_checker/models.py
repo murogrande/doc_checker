@@ -60,6 +60,18 @@ class LinkCheckResult:
 
 
 @dataclass
+class QualityIssue:
+    """LLM-detected documentation quality issue."""
+
+    api_name: str
+    severity: str  # "critical", "warning", "suggestion"
+    category: str  # e.g., "grammar", "params", "completeness"
+    message: str  # Simple explanation
+    suggestion: str  # How to fix with examples
+    line_reference: str | None  # Specific text with issue
+
+
+@dataclass
 class DriftReport:
     """Documentation drift issues."""
 
@@ -70,6 +82,7 @@ class DriftReport:
     broken_local_links: list[dict[str, Any]] = field(default_factory=list)
     broken_mkdocs_paths: list[dict[str, Any]] = field(default_factory=list)
     undocumented_params: list[dict[str, Any]] = field(default_factory=list)
+    quality_issues: list[QualityIssue] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def has_issues(self) -> bool:
@@ -81,6 +94,7 @@ class DriftReport:
             or self.broken_local_links
             or self.broken_mkdocs_paths
             or self.undocumented_params
+            or self.quality_issues
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -92,6 +106,17 @@ class DriftReport:
             "broken_local_links": self.broken_local_links,
             "broken_mkdocs_paths": self.broken_mkdocs_paths,
             "undocumented_params": self.undocumented_params,
+            "quality_issues": [
+                {
+                    "api_name": issue.api_name,
+                    "severity": issue.severity,
+                    "category": issue.category,
+                    "message": issue.message,
+                    "suggestion": issue.suggestion,
+                    "line_reference": issue.line_reference,
+                }
+                for issue in self.quality_issues
+            ],
             "warnings": self.warnings,
             "has_issues": self.has_issues(),
         }

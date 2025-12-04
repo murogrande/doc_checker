@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +27,28 @@ def main() -> int:
         "--check-external-links",
         action="store_true",
         help="Check external HTTP links (can be slow)",
+    )
+    parser.add_argument(
+        "--check-quality",
+        action="store_true",
+        help="Check documentation quality using LLM",
+    )
+    parser.add_argument(
+        "--llm-backend",
+        choices=["ollama", "openai"],
+        default="ollama",
+        help="LLM backend to use (default: ollama)",
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        help="LLM model name (defaults: qwen2.5:3b for ollama, gpt-4o-mini for openai)",  # noqa: E501
+    )
+    parser.add_argument(
+        "--quality-sample",
+        type=float,
+        default=1.0,
+        help="Sample rate for quality checks (0.0-1.0, default: 1.0 = all APIs)",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -51,7 +74,14 @@ def main() -> int:
     args = parser.parse_args()
 
     # Default to --check-all if nothing specified
-    if not any([args.check_all, args.check_signatures, args.check_external_links]):
+    if not any(
+        [
+            args.check_all,
+            args.check_signatures,
+            args.check_external_links,
+            args.check_quality,
+        ]
+    ):
         args.check_all = True
 
     # Add root to Python path for imports
@@ -63,14 +93,31 @@ def main() -> int:
         ignore_pulser_reexports=args.ignore_pulser_reexports,
     )
 
+    # Get API key for OpenAI if needed
+    api_key = None
+    if args.check_quality and args.llm_backend == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            print("Error: OPENAI_API_KEY environment variable not set", file=sys.stderr)
+            print("Set with: export OPENAI_API_KEY='sk-proj-...'", file=sys.stderr)
+            return 1
+
     # Run checks
-    if args.check_all or args.check_signatures:
+    if args.check_all or args.check_signatures or args.check_quality:
         if not args.json:
             print("Running documentation drift detection...")
 
         include_external = args.check_all or args.check_external_links
+        include_quality = args.check_all or args.check_quality
+
         report = detector.check_all(
-            check_external_links=include_external, verbose=args.verbose
+            check_external_links=include_external,
+            check_quality=include_quality,
+            quality_backend=args.llm_backend,
+            quality_model=args.llm_model,
+            quality_api_key=api_key,
+            quality_sample_rate=args.quality_sample,
+            verbose=args.verbose,
         )
 
         if args.json:
