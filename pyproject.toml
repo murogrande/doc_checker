@@ -7,6 +7,8 @@ name = "doc-checker"
 version = "0.1.0"
 description = "Check documentation: broken links and undocumented code"
 readme = "README.md"
+authors = [{ name = "Mauro Mendizabal", email="murogrande20@gmail.com" },
+]
 requires-python = ">=3.9"
 dependencies = [
     "PyYAML>=6.0",
@@ -20,6 +22,8 @@ llm-all = ["ollama>=0.1.0", "openai>=1.0.0"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "pre-commit>=3.0",
     "black>=23.0",
     "mypy>=1.0",
     "ruff>=0.1",

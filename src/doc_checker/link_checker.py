@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from doc_checker.models import ExternalLink, LinkCheckResult
 
 try:
-    import aiohttp
+    import aiohttp  # TODO: aiohttp should be in requirements.txt
 
     AIOHTTP_AVAILABLE = True
 except ImportError:

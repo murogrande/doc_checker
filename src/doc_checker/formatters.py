@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from doc_checker.models import DriftReport
+from .models import DriftReport
 
 
 def format_report(report: DriftReport) -> str:

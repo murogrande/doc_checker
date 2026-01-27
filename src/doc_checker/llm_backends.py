@@ -57,7 +57,7 @@ class OllamaBackend(LLMBackend):
             RuntimeError: If Ollama service not running
         """
         try:
-            import ollama
+            import ollama  # TODO: ollama should be in requirements.txt
         except ImportError:
             raise ImportError(
                 "ollama package required. Install with: pip install ollama\n"
@@ -91,11 +91,11 @@ class OllamaBackend(LLMBackend):
 class OpenAIBackend(LLMBackend):
     """OpenAI API backend."""
 
-    def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None):
+    def __init__(self, model: str = "gpt-5.2", api_key: str | None = None):
         """Initialize OpenAI backend.
 
         Args:
-            model: Model name (gpt-4o-mini recommended, gpt-4o for quality)
+            model: Model name (gpt-5.2 recommended)
             api_key: API key (defaults to OPENAI_API_KEY env var)
 
         Raises:
@@ -103,7 +103,9 @@ class OpenAIBackend(LLMBackend):
             ValueError: If API key not provided
         """
         try:
-            from openai import OpenAI
+            from openai import (
+                OpenAI,
+            )  # TODO: openai should be in requirements.txt or others like anthropic
         except ImportError:
             raise ImportError("openai package required. Install with: pip install openai")
 
@@ -125,7 +127,7 @@ class OpenAIBackend(LLMBackend):
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=1024,
+            max_completion_tokens=1024,
         )
         return response.choices[0].message.content or ""
 

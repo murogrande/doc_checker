@@ -10,47 +10,55 @@ Check documentation drift: broken links, undocumented APIs, invalid references
 - **Local Links**: Validate file paths in markdown
 - **Parameter Docs**: Check function parameters documented
 - **mkdocs.yml Validation**: Verify nav paths exist
+- **LLM Quality Checks**: Evaluate docstring quality (english, code-alignment, completeness)
 
 ## Installation
 
 ```bash
 pip install -e .
-# Optional: async link checking (recommended)
-pip install -e ".[async]"
+pip install -e ".[async]"         # async link checking (recommended)
+pip install -e ".[llm]"           # LLM quality checks (ollama)
+pip install -e ".[llm-openai]"    # LLM quality checks (openai)
+pip install -e ".[dev]"           # all dev dependencies
 ```
 
 ## Usage
 
 ```bash
-# Check everything (except slow external links)
+# Basic checks (API coverage, references, local links, mkdocs paths, params)
 doc-checker --root /path/to/project
 
-# Check all including external links
-doc-checker --check-all --root /path/to/project
-
-# Just API coverage
-doc-checker --check-signatures --root /path/to/project
-
-# Just external links
+# Include external HTTP link validation (slow)
 doc-checker --check-external-links --root /path/to/project
 
-# Verbose + JSON output
-doc-checker --check-all --verbose --json --root /path/to/project
+# LLM quality checks
+doc-checker --check-quality --root /path/to/project                    # ollama (default)
+doc-checker --check-quality --llm-backend openai --root /path/to/project  # openai
+doc-checker --check-quality --quality-sample 0.1 --root /path/to/project  # 10% sample
 
-# Custom modules
-doc-checker --modules my_module other_module --root /path/to/project
+# Custom modules + JSON output
+doc-checker --modules my_module --json --root /path/to/project
+
+# Verbose
+doc-checker --check-external-links --check-quality -v --root /path/to/project
 ```
 
 ## Architecture
 
-**~500 lines, 6 focused modules:**
+```
+CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} → DriftReport → formatters
+```
 
-- `models.py` - Dataclasses only
-- `parsers.py` - Extract refs/links from markdown/yaml
-- `code_analyzer.py` - Extract API signatures via introspection
+**Modules:**
+- `models.py` - Dataclasses (SignatureInfo, DocReference, DriftReport, etc.)
+- `parsers.py` - MarkdownParser/YamlParser for mkdocstrings refs and links
+- `code_analyzer.py` - Introspect Python modules via importlib/inspect
 - `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
-- `checkers.py` - Drift detection logic
-- `formatters.py` - Report rendering
+- `llm_backends.py` - LLMBackend abstraction (Ollama, OpenAI)
+- `llm_checker.py` - QualityChecker for LLM docstring evaluation
+- `prompts.py` - LLM prompt templates
+- `checkers.py` - DriftDetector orchestrates all checks
+- `formatters.py` - Report rendering (text/JSON)
 - `cli.py` - Command-line interface
 
 ## Example Output
