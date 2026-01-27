@@ -182,7 +182,6 @@ class YamlParser:
 
             files: set[str] = set()
             self._extract_files(config["nav"], files)
-            print("files", files)
             return files
         except Exception as e:
             print(f"Warning: Could not parse {self.mkdocs_path}: {e}")
