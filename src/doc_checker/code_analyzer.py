@@ -7,7 +7,7 @@ import inspect
 from pathlib import Path
 from typing import Any
 
-from doc_checker.models import SignatureInfo
+from .models import SignatureInfo
 
 
 class CodeAnalyzer:
@@ -35,6 +35,7 @@ class CodeAnalyzer:
                 continue
             try:
                 obj = getattr(module, name)
+
                 sig_info = self._extract_signature(name, obj, module_name)
                 if sig_info:
                     apis.append(sig_info)

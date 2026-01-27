@@ -16,7 +16,7 @@ def get_english_quality_prompt(docstring: str, api_name: str) -> str:
     Returns:
         Formatted prompt
     """
-    return f"""You are a technical documentation reviewer for a Python quantum computing library.  # noqa: E501
+    return f"""Think longer. You are a technical documentation reviewer for a Python quantum computing library with 15 years of experience.  # noqa: E501
 
 Task: Review the English quality of this docstring for `{api_name}`.
 
@@ -83,7 +83,7 @@ Code implementation (excerpt):
 ```
 """
 
-    return f"""You are a code reviewer for a Python quantum computing library.
+    return f"""Think longer. You are a code reviewer for a Python quantum computing library with 15 years of experience.
 
 Task: Check if the docstring accurately describes what the code does for `{api_name}`.
 
@@ -150,7 +150,7 @@ def get_completeness_prompt(
     if is_public:
         public_note = "\nNote: This is PUBLIC API - users depend on complete docs."
 
-    return f"""You are a documentation auditor for a Python quantum computing library.
+    return f"""Think longer. You are a documentation auditor for a Python quantum computing library with 15 years of experience.
 
 Task: Check completeness of documentation for `{api_name}`.{public_note}
 
@@ -222,7 +222,7 @@ Code implementation (excerpt):
 ```
 """
 
-    return f"""You are a senior technical writer reviewing Python documentation for a quantum computing library.
+    return f"""Think longer. You are a senior technical writer reviewing Python documentation for a quantum computing library with 15 years of experience.
 
 Task: Comprehensive quality review of `{api_name}` documentation.
 

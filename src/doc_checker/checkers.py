@@ -5,17 +5,17 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-from doc_checker.code_analyzer import CodeAnalyzer
-from doc_checker.link_checker import LinkChecker
-from doc_checker.models import DriftReport
-from doc_checker.parsers import MarkdownParser, YamlParser
+from .code_analyzer import CodeAnalyzer
+from .link_checker import LinkChecker
+from .models import DriftReport
+from .parsers import MarkdownParser, YamlParser
 
 
 class DriftDetector:
     """Detect documentation drift."""
 
     # APIs re-exported from Pulser - don't need local docs
-    PULSER_REEXPORTS = {
+    PULSER_REEXPORTS = {  # TODO: delete this and make it configurable using the CLI
         "BitStrings",
         "CorrelationMatrix",
         "Energy",
@@ -251,7 +251,7 @@ class DriftDetector:
     ) -> None:
         """Check documentation quality using LLM."""
         try:
-            from doc_checker.llm_checker import QualityChecker
+            from .llm_checker import QualityChecker
         except ImportError as e:
             report.warnings.append(
                 f"Quality checks skipped: {e}. "

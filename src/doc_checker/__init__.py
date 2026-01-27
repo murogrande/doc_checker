@@ -2,6 +2,6 @@
 
 __version__ = "0.1.0"
 
-from doc_checker.models import DriftReport
+from .models import DriftReport
 
 __all__ = ["DriftReport"]

@@ -13,12 +13,19 @@ from doc_checker.models import DocReference, ExternalLink, LocalLink
 class MarkdownParser:
     """Parse markdown files for references and links."""
 
-    MKDOCSTRINGS_PATTERN = re.compile(r"^:::?\s+([\w.]+)", re.MULTILINE)
-    MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\((https?://[^)]+)\)")
+    MKDOCSTRINGS_PATTERN = re.compile(
+        r"^:::?\s+([\w.]+)", re.MULTILINE
+    )  # identify ::: mypackage.MyClass
+    MARKDOWN_LINK_PATTERN = re.compile(
+        r"\[([^\]]*)\]\((https?://[^)]+)\)"
+    )  # identiy [Documentation](http://example.org/docs)
     LOCAL_LINK_PATTERN = re.compile(
         r"\[([^\]]*)\]\(([^)]+?(?:\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml))\)"
-    )
-    BARE_URL_PATTERN = re.compile(r"(?<![(\[])(https?://[^\s\)>\]\"']+)")
+    )  # identifies [source code](../src/utils.py) and [config](./config.yml)
+    # and [notebook](docs/example.ipynb) and [docs](README.md)
+    BARE_URL_PATTERN = re.compile(
+        r"(?<![(\[])(https?://[^\s\)>\]\"']+)"
+    )  # identify check https://example.com for more info
 
     def __init__(self, docs_path: Path):
         self.docs_path = docs_path
@@ -175,6 +182,7 @@ class YamlParser:
 
             files: set[str] = set()
             self._extract_files(config["nav"], files)
+            print("files", files)
             return files
         except Exception as e:
             print(f"Warning: Could not parse {self.mkdocs_path}: {e}")

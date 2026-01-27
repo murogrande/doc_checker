@@ -8,8 +8,8 @@ import os
 import sys
 from pathlib import Path
 
-from doc_checker.checkers import DriftDetector
-from doc_checker.formatters import format_report
+from .checkers import DriftDetector
+from .formatters import format_report
 
 
 def main() -> int:
