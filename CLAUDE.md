@@ -57,13 +57,14 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 - `DriftDetector._check_quality`: LLM quality (graceful fallback if deps missing)
 
 **CLI defaults:**
-- No flags → runs all checks except external links and quality (must be explicit)
+- No flags → runs all checks including external links and quality (--check-all implied)
 - Default modules: `["emu_mps", "emu_sv"]` - override with `--modules` for other projects
 - OpenAI needs OPENAI_API_KEY env var
+- Default LLM models: qwen2.5:3b (ollama), gpt-4o-mini (openai)
 
 ## Config
 
 - line-length: 90 (black/ruff)
 - mypy: strict, ignores ollama/openai stubs
 - Python >=3.9
-- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml/toml, black, ruff --fix, mypy (excludes tests/), pytest -x
+- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml/toml, check-merge-conflict, debug-statements, black, ruff --fix, mypy (excludes tests/), pytest -x
