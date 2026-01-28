@@ -25,8 +25,9 @@ pre-commit run --all-files        # all hooks
 mypy src/doc_checker              # type check only
 
 # Run
-doc-checker --root /path/to/project                         # basic checks
-doc-checker --check-external-links --root .                 # include HTTP links (slow)
+doc-checker --root /path/to/project                         # all checks (default)
+doc-checker --check-basic --root .                          # basic checks only
+doc-checker --check-external-links --root .                 # external links only
 doc-checker --check-quality --root .                        # LLM quality (ollama)
 doc-checker --check-quality --llm-backend openai --root .   # LLM via openai
 doc-checker --check-quality --quality-sample 0.1 --root .   # sample 10% of APIs
@@ -52,19 +53,23 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 - `cli.py` - argparse entry point
 
 **Key methods:**
+- `DriftDetector.check_all(skip_basic_checks=False)`: Main entry, skip_basic_checks=True for standalone external/quality checks
 - `DriftDetector._check_api_coverage`: Compare get_public_apis() vs find_mkdocstrings_refs()
 - `DriftDetector._is_valid_reference`: Validate mkdocstrings refs via importlib
 - `DriftDetector._check_quality`: LLM quality (graceful fallback if deps missing)
 
-**CLI defaults:**
-- No flags → runs all checks including external links and quality (--check-all implied)
-- Default modules: `["emu_mps", "emu_sv"]` - override with `--modules` for other projects
-- OpenAI needs OPENAI_API_KEY env var
-- Default LLM models: qwen2.5:3b (ollama), gpt-4o-mini (openai)
+**CLI flags:**
+- No flags → `--check-all` auto-set (basic + external + quality)
+- `--check-basic` → basic checks only (API coverage, refs, params, local links, mkdocs)
+- `--check-external-links` → external links only (skips basic checks)
+- `--check-quality` → LLM quality only (runs basic checks too)
+- Default modules: `["emu_mps", "emu_sv"]` - override with `--modules`
+- OpenAI needs `OPENAI_API_KEY` env var
+- LLM models: qwen2.5:3b (ollama), gpt-4o-mini (openai)
 
 ## Config
 
 - line-length: 90 (black/ruff)
-- mypy: strict, ignores ollama/openai stubs
+- mypy: strict (excludes tests/), ignores ollama/openai stubs
 - Python >=3.9
-- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml/toml, check-merge-conflict, debug-statements, black, ruff --fix, mypy (excludes tests/), pytest -x
+- pre-commit runs: black, ruff --fix, mypy, pytest -x
