@@ -11,7 +11,16 @@ from doc_checker.models import DocReference, ExternalLink, LocalLink
 
 
 class MarkdownParser:
-    """Parse markdown files for references and links."""
+    """Parse markdown files and notebooks for documentation references and links.
+
+    Scans docs directory recursively for .md and .ipynb files, extracting:
+    - mkdocstrings references (::: module.Class syntax)
+    - External HTTP links (markdown links + bare URLs)
+    - Local file links (relative paths to .py, .md, .yml, etc.)
+
+    Attributes:
+        docs_path: Root directory to scan for documentation files.
+    """
 
     MKDOCSTRINGS_PATTERN = re.compile(
         r"^:::?\s+([\w.]+)", re.MULTILINE
@@ -28,17 +37,40 @@ class MarkdownParser:
     )  # identify check https://example.com for more info
 
     def __init__(self, docs_path: Path):
+        """Initialize parser with docs directory path.
+
+        Args:
+            docs_path: Root directory containing documentation files.
+        """
         self.docs_path = docs_path
 
     def find_mkdocstrings_refs(self) -> list[DocReference]:
-        """Find all mkdocstrings references."""
+        """Find all mkdocstrings references in markdown files.
+
+        Scans all .md files recursively for ::: or :: syntax used by mkdocstrings
+        to auto-generate API documentation (e.g., `::: mypackage.MyClass`).
+
+        Returns:
+            List of DocReference objects with reference string, file path, line number.
+        """
         refs: list[DocReference] = []
         for md_file in self.docs_path.rglob("*.md"):
             refs.extend(self._parse_refs_in_file(md_file))
         return refs
 
     def find_external_links(self) -> list[ExternalLink]:
-        """Find all external HTTP links."""
+        """Find all external HTTP/HTTPS links in docs.
+
+        Scans .md files and .ipynb notebooks for:
+        - Markdown links: [text](https://example.com)
+        - Bare URLs: https://example.com
+
+        Deduplicates URLs that appear both as markdown link and bare URL on same
+            line.
+
+        Returns:
+            List of ExternalLink objects with URL, text, file path, line number.
+        """
         links: list[ExternalLink] = []
         for md_file in self.docs_path.rglob("*.md"):
             links.extend(self._parse_external_links_in_file(md_file))
@@ -47,14 +79,28 @@ class MarkdownParser:
         return links
 
     def find_local_links(self) -> list[LocalLink]:
-        """Find all local file links."""
+        """Find all local file links in markdown files.
+
+        Detects markdown links pointing to local files with extensions:
+        .py, .ipynb, .md, .txt, .yml, .yaml, .json, .toml
+
+        Returns:
+            List of LocalLink objects with path, text, file path, line number.
+        """
         links: list[LocalLink] = []
         for md_file in self.docs_path.rglob("*.md"):
             links.extend(self._parse_local_links_in_file(md_file))
         return links
 
     def _parse_refs_in_file(self, file_path: Path) -> list[DocReference]:
-        """Parse mkdocstrings refs in single file."""
+        """Parse mkdocstrings references in a single markdown file.
+
+        Args:
+            file_path: Path to the markdown file.
+
+        Returns:
+            List of DocReference objects found in file. Empty list on read error.
+        """
         refs: list[DocReference] = []
         try:
             content = file_path.read_text()
@@ -73,7 +119,17 @@ class MarkdownParser:
         return refs
 
     def _parse_external_links_in_file(self, file_path: Path) -> list[ExternalLink]:
-        """Parse external links in markdown file."""
+        """Parse external HTTP links in a single markdown file.
+
+        Extracts both markdown-style links and bare URLs, deduplicating when
+        the same URL appears in both formats on the same line.
+
+        Args:
+            file_path: Path to the markdown file.
+
+        Returns:
+            List of ExternalLink objects found in file. Empty list on read error.
+        """
         links: list[ExternalLink] = []
         try:
             content = file_path.read_text()
@@ -105,7 +161,18 @@ class MarkdownParser:
         return links
 
     def _parse_links_in_notebook(self, file_path: Path) -> list[ExternalLink]:
-        """Parse external links in Jupyter notebook."""
+        """Parse external HTTP links in a Jupyter notebook.
+
+        Iterates through notebook cells, extracting links from cell source.
+        Line number corresponds to cell index (1-based).
+
+        Args:
+            file_path: Path to the .ipynb file.
+
+        Returns:
+            List of ExternalLink objects found in notebook. Empty list on
+                read/parse error.
+        """
         links: list[ExternalLink] = []
         try:
             notebook = json.loads(file_path.read_text())
@@ -141,7 +208,16 @@ class MarkdownParser:
         return links
 
     def _parse_local_links_in_file(self, file_path: Path) -> list[LocalLink]:
-        """Parse local file links in markdown."""
+        """Parse local file links in a single markdown file.
+
+        Filters out http:// and https:// URLs to only capture relative file paths.
+
+        Args:
+            file_path: Path to the markdown file.
+
+        Returns:
+            List of LocalLink objects found in file. Empty list on read error.
+        """
         links: list[LocalLink] = []
         try:
             content = file_path.read_text()
@@ -163,14 +239,32 @@ class MarkdownParser:
 
 
 class YamlParser:
-    """Parse mkdocs.yml for navigation structure."""
+    """Parse mkdocs.yml for navigation structure validation.
+
+    Extracts and validates file paths from the nav: section of mkdocs config,
+    checking that referenced documentation files exist.
+
+    Attributes:
+        mkdocs_path: Path to mkdocs.yml config file.
+        docs_path: Root directory where documentation files should exist.
+    """
 
     def __init__(self, mkdocs_path: Path, docs_path: Path):
+        """Initialize parser with mkdocs config and docs paths.
+
+        Args:
+            mkdocs_path: Path to mkdocs.yml file.
+            docs_path: Root docs directory for validating nav paths.
+        """
         self.mkdocs_path = mkdocs_path
         self.docs_path = docs_path
 
     def get_nav_files(self) -> set[str] | None:
-        """Extract file paths from nav section."""
+        """Extract all file paths referenced in nav section.
+
+        Returns:
+            Set of file path strings from nav, or None if mkdocs.yml missing/no nav.
+        """
         if not self.mkdocs_path.exists():
             return None
         try:
@@ -188,7 +282,12 @@ class YamlParser:
             return None
 
     def check_nav_paths(self) -> list[dict[str, str]]:
-        """Check all nav paths exist."""
+        """Validate all nav paths exist in docs directory.
+
+        Returns:
+            List of dicts with 'path' and 'location' keys for each broken path.
+            Empty list if mkdocs.yml missing, no nav section, or all paths valid.
+        """
         if not self.mkdocs_path.exists():
             return []
         try:
@@ -206,7 +305,14 @@ class YamlParser:
             return []
 
     def _extract_files(self, nav_item: Any, files: set[str]) -> None:
-        """Recursively extract file paths."""
+        """Recursively extract file paths from nested nav structure.
+
+        Handles nav items as strings, dicts, or lists (mkdocs nav format).
+
+        Args:
+            nav_item: Nav element (str path, dict, or list of items).
+            files: Set to accumulate discovered file paths (mutated in place).
+        """
         if isinstance(nav_item, str):
             files.add(nav_item)
         elif isinstance(nav_item, dict):
@@ -221,7 +327,12 @@ class YamlParser:
                 self._extract_files(item, files)
 
     def _check_nav_item(self, nav_item: Any, broken: list[dict[str, str]]) -> None:
-        """Recursively check nav paths exist."""
+        """Recursively validate nav paths exist in docs directory.
+
+        Args:
+            nav_item: Nav element (str path, dict, or list of items).
+            broken: List to accumulate broken paths (mutated in place).
+        """
         if isinstance(nav_item, str):
             if not (self.docs_path / nav_item).exists():
                 broken.append({"path": nav_item, "location": "mkdocs.yml"})
