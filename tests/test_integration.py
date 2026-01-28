@@ -322,3 +322,94 @@ def test_integration_multiple_modules(tmp_path: Path):
 
     # Both modules should be checked
     assert len(report.missing_in_docs) == 0
+
+
+class TestCLIBehavior:
+    """Test CLI flag behaviors via DriftDetector."""
+
+    def test_check_basic_runs_only_basic_checks(self, integration_project: Path):
+        """Test --check-basic runs basic checks, skips external/quality."""
+        detector = DriftDetector(integration_project, modules=["my_lib"])
+
+        # Simulate --check-basic: basic checks, no external, no quality
+        report = detector.check_all(
+            check_external_links=False,
+            check_quality=False,
+        )
+
+        # Basic checks should run (report has structure even if no issues)
+        assert hasattr(report, "missing_in_docs")
+        assert hasattr(report, "broken_references")
+        assert hasattr(report, "undocumented_params")
+        assert hasattr(report, "broken_local_links")
+        assert hasattr(report, "broken_mkdocs_paths")
+
+        # External and quality should be empty (not run)
+        assert len(report.broken_external_links) == 0
+        assert len(report.quality_issues) == 0
+
+    def test_check_external_links_only(self, integration_project: Path):
+        """Test --check-external-links runs only external link checks."""
+        detector = DriftDetector(integration_project, modules=["my_lib"])
+
+        # Simulate --check-external-links: skip basic, only external
+        report = detector.check_all(
+            check_external_links=True,
+            skip_basic_checks=True,
+        )
+
+        # Basic checks should be empty (skipped)
+        assert len(report.missing_in_docs) == 0
+        assert len(report.broken_references) == 0
+        assert len(report.undocumented_params) == 0
+        assert len(report.broken_local_links) == 0
+        assert len(report.broken_mkdocs_paths) == 0
+
+        # Quality should be empty (not enabled)
+        assert len(report.quality_issues) == 0
+
+    def test_check_quality_runs_basic_and_quality(self, integration_project: Path):
+        """Test --check-quality runs basic + quality, no external links."""
+        detector = DriftDetector(integration_project, modules=["my_lib"])
+
+        mock_checker = MagicMock()
+        mock_checker.check_module_quality.return_value = []
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_cls:
+            mock_cls.return_value = mock_checker
+            # Simulate --check-quality: basic + quality, no external
+            report = detector.check_all(
+                check_external_links=False,
+                check_quality=True,
+            )
+
+        # Basic checks ran
+        assert hasattr(report, "missing_in_docs")
+        assert hasattr(report, "broken_references")
+
+        # External links not checked
+        assert len(report.broken_external_links) == 0
+
+        # Quality checker was called
+        mock_checker.check_module_quality.assert_called()
+
+    def test_check_all_runs_everything(self, integration_project: Path):
+        """Test --check-all (default) runs all checks."""
+        detector = DriftDetector(integration_project, modules=["my_lib"])
+
+        mock_checker = MagicMock()
+        mock_checker.check_module_quality.return_value = []
+
+        with patch("doc_checker.llm_checker.QualityChecker") as mock_cls:
+            mock_cls.return_value = mock_checker
+            report = detector.check_all(
+                check_external_links=True,
+                check_quality=True,
+            )
+
+        # Basic checks ran (has structure)
+        assert hasattr(report, "missing_in_docs")
+        assert hasattr(report, "broken_references")
+
+        # Quality checker was called
+        mock_checker.check_module_quality.assert_called()

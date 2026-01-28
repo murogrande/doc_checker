@@ -21,7 +21,9 @@ def main() -> int:
         "--check-all", action="store_true", help="Run all drift detection checks"
     )
     parser.add_argument(
-        "--check-signatures", action="store_true", help="Check API signature coverage"
+        "--check-basic",
+        action="store_true",
+        help="Run basic checks (API coverage, references, params, local links, mkdocs)",
     )
     parser.add_argument(
         "--check-external-links",
@@ -77,7 +79,7 @@ def main() -> int:
     if not any(
         [
             args.check_all,
-            args.check_signatures,
+            args.check_basic,
             args.check_external_links,
             args.check_quality,
         ]
@@ -103,7 +105,7 @@ def main() -> int:
             return 1
 
     # Run checks
-    if args.check_all or args.check_signatures or args.check_quality:
+    if args.check_all or args.check_basic or args.check_quality:
         if not args.json:
             print("Running documentation drift detection...")
 
@@ -131,7 +133,9 @@ def main() -> int:
     if args.check_external_links:
         if not args.json:
             print("Checking external links...")
-        report = detector.check_all(check_external_links=True, verbose=args.verbose)
+        report = detector.check_all(
+            check_external_links=True, verbose=args.verbose, skip_basic_checks=True
+        )
 
         if args.json:
             print(json.dumps(report.to_dict(), indent=2))

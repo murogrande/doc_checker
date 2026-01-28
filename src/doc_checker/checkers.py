@@ -49,6 +49,7 @@ class DriftDetector:
         quality_api_key: str | None = None,
         quality_sample_rate: float = 1.0,
         verbose: bool = False,
+        skip_basic_checks: bool = False,
     ) -> DriftReport:
         """Run all checks.
 
@@ -60,14 +61,16 @@ class DriftDetector:
             quality_api_key: API key for cloud backends
             quality_sample_rate: Check only this fraction of APIs (0.0-1.0)
             verbose: Print progress
+            skip_basic_checks: Skip API coverage, references, params, local links
         """
         report = DriftReport()
 
-        self._check_api_coverage(report)
-        self._check_references(report)
-        self._check_param_docs(report)
-        self._check_local_links(report)
-        self._check_mkdocs_paths(report)
+        if not skip_basic_checks:
+            self._check_api_coverage(report)
+            self._check_references(report)
+            self._check_param_docs(report)
+            self._check_local_links(report)
+            self._check_mkdocs_paths(report)
 
         if check_external_links:
             self._check_external_links(report, verbose)

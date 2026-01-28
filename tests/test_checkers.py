@@ -212,6 +212,23 @@ class TestDriftDetector:
 
         assert report.has_issues() is False
 
+    def test_skip_basic_checks(self, test_project: Path):
+        """Test skip_basic_checks=True skips API coverage, refs, params, local links."""
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+
+        # Without skip: should have issues (missing API, broken local link, etc.)
+        report_full = detector.check_all()
+        assert len(report_full.missing_in_docs) > 0
+        assert len(report_full.broken_local_links) > 0
+
+        # With skip: basic checks should be empty
+        report_skip = detector.check_all(skip_basic_checks=True)
+        assert len(report_skip.missing_in_docs) == 0
+        assert len(report_skip.broken_references) == 0
+        assert len(report_skip.undocumented_params) == 0
+        assert len(report_skip.broken_local_links) == 0
+        assert len(report_skip.broken_mkdocs_paths) == 0
+
 
 class TestQualityChecks:
     """Tests for LLM quality checks integration."""

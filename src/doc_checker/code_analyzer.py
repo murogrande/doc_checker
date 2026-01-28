@@ -11,13 +11,32 @@ from .models import SignatureInfo
 
 
 class CodeAnalyzer:
-    """Extract public APIs from Python modules."""
+    """Extract public APIs from Python modules via importlib/inspect introspection.
+
+    Discovers classes and functions exported by a module (via __all__ or dir()),
+    extracts their signatures, parameters, return types, and docstrings.
+    """
 
     def __init__(self, root_path: Path):
+        """Initialize analyzer.
+
+        Args:
+            root_path: Project root path (added to sys.path for imports).
+        """
         self.root_path = root_path
 
     def get_public_apis(self, module_name: str) -> list[SignatureInfo]:
-        """Extract all public APIs from module."""
+        """Extract all public APIs from a module.
+
+        Uses module's __all__ if defined, otherwise falls back to non-underscore
+        names from dir(). Skips __version__ and non-callable objects.
+
+        Args:
+            module_name: Fully qualified module name (e.g. "emu_mps").
+
+        Returns:
+            List of SignatureInfo for each public class/function.
+        """
         try:
             module = importlib.import_module(module_name)
         except ImportError as e:
@@ -47,7 +66,18 @@ class CodeAnalyzer:
     def _extract_signature(
         self, name: str, obj: Any, module_name: str
     ) -> SignatureInfo | None:
-        """Extract signature from Python object."""
+        """Extract signature from a Python object.
+
+        Dispatches to class or function extraction based on object type.
+
+        Args:
+            name: Object name as exported by module.
+            obj: The actual Python object (class, function, etc.).
+            module_name: Parent module's fully qualified name.
+
+        Returns:
+            SignatureInfo if obj is a class/function, None otherwise.
+        """
         try:
             if inspect.isclass(obj):
                 return self._extract_class_signature(name, obj, module_name)
@@ -60,7 +90,16 @@ class CodeAnalyzer:
     def _extract_class_signature(
         self, name: str, cls: type, module_name: str
     ) -> SignatureInfo:
-        """Extract class signature (uses __init__)."""
+        """Extract class signature from its __init__ method.
+
+        Args:
+            name: Class name.
+            cls: The class object.
+            module_name: Parent module's fully qualified name.
+
+        Returns:
+            SignatureInfo with kind="class", parameters from __init__.
+        """
         params: list[str] = []
         try:
             sig = inspect.signature(cls)
@@ -83,7 +122,16 @@ class CodeAnalyzer:
     def _extract_function_signature(
         self, name: str, func: Any, module_name: str
     ) -> SignatureInfo:
-        """Extract function signature."""
+        """Extract function/method signature.
+
+        Args:
+            name: Function name.
+            func: The function or method object.
+            module_name: Parent module's fully qualified name.
+
+        Returns:
+            SignatureInfo with kind="function", parameters excluding self/cls.
+        """
         params = []
         return_ann = None
         try:

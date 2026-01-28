@@ -25,10 +25,13 @@ pip install -e ".[dev]"           # all dev dependencies
 ## Usage
 
 ```bash
-# Basic checks (API coverage, references, local links, mkdocs paths, params)
+# All checks (basic + external links + LLM quality)
 doc-checker --root /path/to/project
 
-# Include external HTTP link validation (slow)
+# Basic checks only (API coverage, references, params, local links, mkdocs)
+doc-checker --check-basic --root /path/to/project
+
+# External HTTP link validation only (slow)
 doc-checker --check-external-links --root /path/to/project
 
 # LLM quality checks
@@ -39,8 +42,8 @@ doc-checker --check-quality --quality-sample 0.1 --root /path/to/project  # 10% 
 # Custom modules + JSON output
 doc-checker --modules my_module --json --root /path/to/project
 
-# Verbose
-doc-checker --check-external-links --check-quality -v --root /path/to/project
+# Combine flags
+doc-checker --check-basic --check-external-links -v --root /path/to/project
 ```
 
 ## Architecture
