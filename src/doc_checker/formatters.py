@@ -9,7 +9,10 @@ from .models import DriftReport
 
 def format_report(report: DriftReport) -> str:
     """Format drift report as text."""
-    lines = ["=" * 60, "DOCUMENTATION DRIFT REPORT", "=" * 60, ""]
+    lines = ["=" * 60, "DOCUMENTATION DRIFT REPORT", "=" * 60]
+    if report.llm_backend and report.llm_model:
+        lines.append(f"LLM: {report.llm_backend} / {report.llm_model}")
+    lines.append("")
 
     if report.missing_in_docs:
         lines.append(f"Missing from docs ({len(report.missing_in_docs)}):")

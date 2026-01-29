@@ -64,7 +64,11 @@ class CodeAnalyzer:
 
         return apis
 
-    def get_all_public_apis(self, module_name: str) -> list[SignatureInfo]:
+    def get_all_public_apis(
+        self,
+        module_name: str,
+        ignore_submodules: set[str] | None = None,
+    ) -> tuple[list[SignatureInfo], set[str]]:
         """Extract public APIs from a module and all its submodules.
 
         Uses pkgutil.walk_packages() to discover submodules, then
@@ -72,26 +76,50 @@ class CodeAnalyzer:
 
         Args:
             module_name: Top-level module name (e.g. "emu_mps").
+            ignore_submodules: Fully qualified submodule paths to
+                skip (e.g. "emu_mps.optimatrix"). Also skips
+                nested children.
 
         Returns:
-            Combined list of SignatureInfo from all submodules.
+            Tuple of (list of SignatureInfo, set of unmatched
+            ignore entries).
         """
+        ignore = ignore_submodules or set()
+        matched_ignores: set[str] = set()
+
         try:
             module = importlib.import_module(module_name)
         except ImportError as e:
             print(f"Warning: Could not import {module_name}: {e}")
-            return []
+            return [], set()
 
         all_apis = list(self.get_public_apis(module_name))
         seen = {(a.module, a.name) for a in all_apis}
 
         pkg_path = getattr(module, "__path__", None)
         if pkg_path is None:
-            return all_apis
+            return all_apis, set()
 
-        for _, submod_name, _ in pkgutil.walk_packages(
+        # Filter ignore entries relevant to this module
+        module_ignores = {ig for ig in ignore if ig.startswith(module_name + ".")}
+
+        for _, submod_name, is_pkg in pkgutil.walk_packages(
             pkg_path, prefix=module_name + "."
         ):
+            # Only recurse into sub-packages (dirs), not .py files
+            if not is_pkg:
+                continue
+
+            # Skip ignored submodules (exact or prefix match)
+            skipped = False
+            for ig in module_ignores:
+                if submod_name == ig or submod_name.startswith(ig + "."):
+                    matched_ignores.add(ig)
+                    skipped = True
+                    break
+            if skipped:
+                continue
+
             sub_apis = self.get_public_apis(submod_name)
             for api in sub_apis:
                 key = (api.module, api.name)
@@ -99,7 +127,8 @@ class CodeAnalyzer:
                     seen.add(key)
                     all_apis.append(api)
 
-        return all_apis
+        unmatched = module_ignores - matched_ignores
+        return all_apis, unmatched
 
     def _extract_signature(
         self, name: str, obj: Any, module_name: str

@@ -47,7 +47,11 @@ class DriftDetector:
     }
 
     def __init__(
-        self, root_path: Path, modules: list[str], ignore_pulser_reexports: bool = True
+        self,
+        root_path: Path,
+        modules: list[str],
+        ignore_pulser_reexports: bool = True,
+        ignore_submodules: list[str] | None = None,
     ):
         """Initialize detector with project root and target modules.
 
@@ -57,10 +61,13 @@ class DriftDetector:
             modules: Python module names to inspect (e.g. ``["emu_mps"]``).
             ignore_pulser_reexports: If True, symbols listed in
                 ``PULSER_REEXPORTS`` are excluded from coverage checks.
+            ignore_submodules: Submodule names to skip during
+                recursive discovery (e.g. ``["optimatrix"]``).
         """
         self.root_path = root_path
         self.modules = modules
         self.ignore_pulser_reexports = ignore_pulser_reexports
+        self.ignore_submodules: set[str] = set(ignore_submodules or [])
 
         self.code_analyzer = CodeAnalyzer(root_path)
         self.md_parser = MarkdownParser(root_path / "docs")
@@ -102,6 +109,11 @@ class DriftDetector:
             A ``DriftReport`` with all detected issues.
         """
         report = DriftReport()
+        if check_quality:
+            report.llm_backend = quality_backend
+            defaults = {"ollama": "qwen2.5:3b", "openai": "gpt-4o-mini"}
+            report.llm_model = quality_model or defaults.get(quality_backend)
+        self._warn_unmatched_ignores(report)
 
         if not skip_basic_checks:
             self._check_api_coverage(report)
@@ -125,6 +137,21 @@ class DriftDetector:
 
         return report
 
+    def _warn_unmatched_ignores(self, report: DriftReport) -> None:
+        """Warn once per unmatched --ignore-submodules entry."""
+        if not self.ignore_submodules:
+            return
+        all_unmatched: set[str] = set()
+        for module_name in self.modules:
+            _, unmatched = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
+            all_unmatched |= unmatched
+        for name in sorted(all_unmatched):
+            report.warnings.append(
+                f"--ignore-submodules '{name}' " f"did not match any subpackage"
+            )
+
     def _check_api_coverage(self, report: DriftReport) -> None:
         """Compare public APIs against mkdocstrings references.
 
@@ -147,7 +174,9 @@ class DriftDetector:
                     documented_names[base_module].add(ref)
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_all_public_apis(module_name)
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
             for api in apis:
                 # Skip Pulser re-exports
                 if self.ignore_pulser_reexports and api.name in self.PULSER_REEXPORTS:
@@ -217,7 +246,9 @@ class DriftDetector:
         }
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_all_public_apis(module_name)
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
             for api in apis:
                 if not api.docstring or not api.parameters:
                     continue
@@ -340,7 +371,13 @@ class DriftDetector:
             return
 
         try:
-            checker = QualityChecker(self.root_path, backend, model, api_key)
+            checker = QualityChecker(
+                self.root_path,
+                backend,
+                model,
+                api_key,
+                ignore_submodules=self.ignore_submodules,
+            )
         except (ImportError, RuntimeError, ValueError) as e:
             report.warnings.append(f"Quality checks skipped: {e}")
             return

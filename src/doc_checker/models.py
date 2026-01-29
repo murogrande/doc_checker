@@ -169,6 +169,8 @@ class DriftReport:
     undocumented_params: list[dict[str, Any]] = field(default_factory=list)
     quality_issues: list[QualityIssue] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    llm_backend: str | None = None
+    llm_model: str | None = None
 
     def has_issues(self) -> bool:
         """Return True if any documentation issues were detected (excluding warnings)."""
@@ -205,5 +207,7 @@ class DriftReport:
                 for issue in self.quality_issues
             ],
             "warnings": self.warnings,
+            "llm_backend": self.llm_backend,
+            "llm_model": self.llm_model,
             "has_issues": self.has_issues(),
         }

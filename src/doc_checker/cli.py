@@ -72,6 +72,12 @@ def main() -> int:
         default=["emu_mps", "emu_sv"],
         help="Modules to check (default: emu_mps emu_sv)",
     )
+    parser.add_argument(
+        "--ignore-submodules",
+        nargs="+",
+        default=[],
+        help="Submodule paths to skip (e.g. emu_mps.optimatrix)",
+    )
 
     args = parser.parse_args()
 
@@ -93,6 +99,7 @@ def main() -> int:
         args.root,
         modules=args.modules,
         ignore_pulser_reexports=args.ignore_pulser_reexports,
+        ignore_submodules=args.ignore_submodules,
     )
 
     # Get API key for OpenAI if needed

@@ -129,7 +129,7 @@ class TestCodeAnalyzer:
         sys.path.insert(0, str(tmp_path))
         try:
             analyzer = CodeAnalyzer(tmp_path)
-            apis = analyzer.get_all_public_apis("nested_pkg")
+            apis, _ = analyzer.get_all_public_apis("nested_pkg")
             names = {api.name for api in apis}
             assert "TopFunc" in names
             assert "SubFunc" in names
@@ -138,18 +138,109 @@ class TestCodeAnalyzer:
             sys.modules.pop("nested_pkg", None)
             sys.modules.pop("nested_pkg.sub", None)
 
+    def test_get_all_public_apis_ignore_submodules(self, tmp_path: Path):
+        """Test ignore_submodules skips matching submodules."""
+        pkg = tmp_path / "ign_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text('__all__ = ["Top"]\ndef Top(): "top"\n')
+        sub = pkg / "skip_me"
+        sub.mkdir()
+        (sub / "__init__.py").write_text('__all__ = ["Skipped"]\ndef Skipped(): "skip"\n')
+        keep = pkg / "keep"
+        keep.mkdir()
+        (keep / "__init__.py").write_text('__all__ = ["Kept"]\ndef Kept(): "keep"\n')
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis, _ = analyzer.get_all_public_apis(
+                "ign_pkg",
+                ignore_submodules={"ign_pkg.skip_me"},
+            )
+            names = {api.name for api in apis}
+            assert "Top" in names
+            assert "Kept" in names
+            assert "Skipped" not in names
+        finally:
+            sys.modules.pop("ign_pkg", None)
+            sys.modules.pop("ign_pkg.skip_me", None)
+            sys.modules.pop("ign_pkg.keep", None)
+
+    def test_get_all_public_apis_ignore_nonexistent_warns(self, tmp_path: Path):
+        """Warn when ignore_submodules entry matches nothing."""
+        pkg = tmp_path / "warn_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text('__all__ = ["W"]\ndef W(): "w"\n')
+        # Need a real subpackage so the warning logic runs
+        sub = pkg / "real_sub"
+        sub.mkdir()
+        (sub / "__init__.py").write_text("__all__ = []\n")
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            _, unmatched = analyzer.get_all_public_apis(
+                "warn_pkg",
+                ignore_submodules={"warn_pkg.nonexistent"},
+            )
+            assert "warn_pkg.nonexistent" in unmatched
+        finally:
+            sys.modules.pop("warn_pkg", None)
+            sys.modules.pop("warn_pkg.real_sub", None)
+
+    def test_get_all_public_apis_ignore_no_warn_other_module(self, tmp_path: Path):
+        """No warning when ignore entry targets a different module."""
+        pkg = tmp_path / "other_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text('__all__ = ["F"]\ndef F(): "f"\n')
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            _, unmatched = analyzer.get_all_public_apis(
+                "other_pkg",
+                ignore_submodules={"different_pkg.sub"},
+            )
+            assert len(unmatched) == 0
+        finally:
+            sys.modules.pop("other_pkg", None)
+
+    def test_get_all_public_apis_skips_py_files(self, tmp_path: Path):
+        """Internal .py files are not treated as submodules."""
+        pkg = tmp_path / "flat_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text(
+            '__all__ = ["Public"]\n' "from .internal import Internal as Public\n"
+        )
+        # .py file with its own classes — should NOT be discovered
+        (pkg / "internal.py").write_text('class Internal:\n    "impl detail"\n')
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis, _ = analyzer.get_all_public_apis("flat_pkg")
+            names = {(api.module, api.name) for api in apis}
+            # Only top-level export, not internal.py's class
+            assert ("flat_pkg", "Public") in names
+            assert not any(m == "flat_pkg.internal" for m, _ in names)
+        finally:
+            sys.modules.pop("flat_pkg", None)
+            sys.modules.pop("flat_pkg.internal", None)
+
     def test_get_all_public_apis_flat_module(
         self, sample_module: ModuleType, tmp_path: Path
     ):
         """Flat module: get_all_public_apis == get_public_apis."""
         analyzer = CodeAnalyzer(tmp_path)
         flat = analyzer.get_public_apis("test_module")
-        recursive = analyzer.get_all_public_apis("test_module")
+        recursive, _ = analyzer.get_all_public_apis("test_module")
         assert {a.name for a in flat} == {a.name for a in recursive}
 
     def test_get_all_public_apis_nonexistent(self, tmp_path: Path):
         analyzer = CodeAnalyzer(tmp_path)
-        assert analyzer.get_all_public_apis("nonexistent_module_xyz") == []
+        apis, unmatched = analyzer.get_all_public_apis("nonexistent_module_xyz")
+        assert apis == []
+        assert unmatched == set()
 
     def test_module_without_all(self, tmp_path: Path):
         """Test module without __all__ attribute."""

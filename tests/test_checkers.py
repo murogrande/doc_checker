@@ -229,6 +229,26 @@ class TestDriftDetector:
 
         assert "test_pkg.sub.SubHelper" in report.missing_in_docs
 
+    def test_ignore_submodules(self, test_project: Path):
+        """ignore_submodules excludes submodule APIs from coverage."""
+        sub = test_project / "test_pkg" / "ignored"
+        sub.mkdir()
+        (sub / "__init__.py").write_text(
+            '__all__ = ["Hidden"]\nclass Hidden:\n    "hidden"\n'
+        )
+
+        sys.modules.pop("test_pkg", None)
+        sys.modules.pop("test_pkg.ignored", None)
+
+        detector = DriftDetector(
+            test_project,
+            modules=["test_pkg"],
+            ignore_submodules=["test_pkg.ignored"],
+        )
+        report = detector.check_all()
+
+        assert not any("Hidden" in m for m in report.missing_in_docs)
+
     def test_skip_basic_checks(self, test_project: Path):
         """Test skip_basic_checks=True skips API coverage, refs, params, local links."""
         detector = DriftDetector(test_project, modules=["test_pkg"])

@@ -56,7 +56,7 @@ def mock_code_analyzer(tmp_path: Path):
         ),
     ]
     analyzer.get_public_apis.return_value = apis
-    analyzer.get_all_public_apis.return_value = apis
+    analyzer.get_all_public_apis.return_value = (apis, set())
     return analyzer
 
 
@@ -219,7 +219,7 @@ def test_quality_checker_sample_rate(
 
     mock_analyzer = MagicMock()
     mock_analyzer.get_public_apis.return_value = apis
-    mock_analyzer.get_all_public_apis.return_value = apis
+    mock_analyzer.get_all_public_apis.return_value = (apis, set())
     mock_analyzer_class.return_value = mock_analyzer
     mock_get_backend.return_value = mock_backend
 
@@ -306,7 +306,7 @@ def test_quality_checker_empty_module(
     """Test quality check on module with no APIs."""
     mock_analyzer = MagicMock()
     mock_analyzer.get_public_apis.return_value = []
-    mock_analyzer.get_all_public_apis.return_value = []
+    mock_analyzer.get_all_public_apis.return_value = ([], set())
     mock_analyzer_class.return_value = mock_analyzer
     mock_get_backend.return_value = mock_backend
 

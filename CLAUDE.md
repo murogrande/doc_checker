@@ -32,6 +32,7 @@ doc-checker --check-quality --root .                        # LLM quality (ollam
 doc-checker --check-quality --llm-backend openai --root .   # LLM via openai
 doc-checker --check-quality --quality-sample 0.1 --root .   # sample 10% of APIs
 doc-checker --modules my_module --json --root .             # custom modules, JSON out
+doc-checker --ignore-submodules emu_mps.optimatrix --root .  # skip submodules
 ```
 
 ## Architecture
@@ -43,7 +44,7 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 **Modules (src/doc_checker/):**
 - `models.py` - Dataclasses: SignatureInfo, DocReference, LocalLink, ExternalLink, QualityIssue, DriftReport
 - `parsers.py` - MarkdownParser/YamlParser: extract mkdocstrings refs, links from md/notebooks/mkdocs.yml
-- `code_analyzer.py` - CodeAnalyzer: introspect Python modules via importlib/inspect
+- `code_analyzer.py` - CodeAnalyzer: introspect Python modules via importlib/inspect. `get_all_public_apis()` recursively discovers sub-packages (not .py files) via pkgutil.walk_packages(), returns `(apis, unmatched_ignores)` tuple
 - `link_checker.py` - LinkChecker: async HTTP validation (aiohttp or urllib fallback)
 - `llm_backends.py` - LLMBackend ABC + OllamaBackend, OpenAIBackend
 - `llm_checker.py` - QualityChecker: LLM evaluates docstrings
@@ -54,7 +55,7 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 
 **Key methods:**
 - `DriftDetector.check_all(skip_basic_checks=False)`: Main entry, skip_basic_checks=True for standalone external/quality checks
-- `DriftDetector._check_api_coverage`: Compare get_public_apis() vs find_mkdocstrings_refs()
+- `DriftDetector._check_api_coverage`: Compare get_all_public_apis() (recursive) vs find_mkdocstrings_refs()
 - `DriftDetector._is_valid_reference`: Validate mkdocstrings refs via importlib
 - `DriftDetector._check_quality`: LLM quality (graceful fallback if deps missing)
 
@@ -63,6 +64,7 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 - `--check-basic` → basic checks only (API coverage, refs, params, local links, mkdocs)
 - `--check-external-links` → external links only (skips basic checks)
 - `--check-quality` → LLM quality only (runs basic checks too)
+- `--ignore-submodules` → skip submodules by fully qualified path (e.g. `emu_mps.optimatrix`), warns if unmatched
 - Default modules: `["emu_mps", "emu_sv"]` - override with `--modules`
 - OpenAI needs `OPENAI_API_KEY` env var
 - LLM models: qwen2.5:3b (ollama), gpt-4o-mini (openai)
