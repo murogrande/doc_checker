@@ -1,4 +1,10 @@
-"""Drift detection checks."""
+"""Drift detection orchestrator.
+
+Coordinates all documentation checks: API coverage, reference
+validation, parameter docs, local/external links, mkdocs nav,
+and LLM-based quality analysis. Entry point is
+``DriftDetector.check_all()``.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +18,19 @@ from .parsers import MarkdownParser, YamlParser
 
 
 class DriftDetector:
-    """Detect documentation drift."""
+    """Detect documentation drift in a Python project.
+
+    Compares a project's public API (via importlib/inspect) against
+    its mkdocs-based documentation to find gaps, broken references,
+    missing parameter docs, dead links, and quality issues.
+
+    Attributes:
+        root_path: Project root directory.
+        modules: Python module names to check.
+        ignore_pulser_reexports: Skip known Pulser re-exported symbols.
+        PULSER_REEXPORTS: Symbol names re-exported from Pulser that
+            don't need local documentation.
+    """
 
     # APIs re-exported from Pulser - don't need local docs
     PULSER_REEXPORTS = {  # TODO: delete this and make it configurable using the CLI
@@ -29,11 +47,27 @@ class DriftDetector:
     }
 
     def __init__(
-        self, root_path: Path, modules: list[str], ignore_pulser_reexports: bool = True
+        self,
+        root_path: Path,
+        modules: list[str],
+        ignore_pulser_reexports: bool = True,
+        ignore_submodules: list[str] | None = None,
     ):
+        """Initialize detector with project root and target modules.
+
+        Args:
+            root_path: Path to the project root (must contain ``docs/``
+                and ``mkdocs.yml``).
+            modules: Python module names to inspect (e.g. ``["emu_mps"]``).
+            ignore_pulser_reexports: If True, symbols listed in
+                ``PULSER_REEXPORTS`` are excluded from coverage checks.
+            ignore_submodules: Submodule names to skip during
+                recursive discovery (e.g. ``["optimatrix"]``).
+        """
         self.root_path = root_path
         self.modules = modules
         self.ignore_pulser_reexports = ignore_pulser_reexports
+        self.ignore_submodules: set[str] = set(ignore_submodules or [])
 
         self.code_analyzer = CodeAnalyzer(root_path)
         self.md_parser = MarkdownParser(root_path / "docs")
@@ -51,19 +85,35 @@ class DriftDetector:
         verbose: bool = False,
         skip_basic_checks: bool = False,
     ) -> DriftReport:
-        """Run all checks.
+        """Run selected checks and return a report.
+
+        By default runs basic checks only. External link and LLM quality
+        checks are opt-in. When ``skip_basic_checks`` is True, only the
+        explicitly enabled optional checks run.
 
         Args:
-            check_external_links: Check external HTTP links (slow)
-            check_quality: Run LLM quality checks
-            quality_backend: "ollama" or "openai"
-            quality_model: Model name (uses defaults if None)
-            quality_api_key: API key for cloud backends
-            quality_sample_rate: Check only this fraction of APIs (0.0-1.0)
-            verbose: Print progress
-            skip_basic_checks: Skip API coverage, references, params, local links
+            check_external_links: Validate external HTTP/HTTPS URLs
+                found in markdown and notebooks.
+            check_quality: Evaluate docstring quality via an LLM.
+            quality_backend: LLM backend — ``"ollama"`` or ``"openai"``.
+            quality_model: Model name override (backend defaults used
+                when None).
+            quality_api_key: API key for cloud backends (OpenAI).
+            quality_sample_rate: Fraction of APIs to check (0.0–1.0).
+                Useful for large codebases.
+            verbose: Print progress to stdout.
+            skip_basic_checks: Skip API coverage, reference validation,
+                parameter docs, local links, and mkdocs nav checks.
+
+        Returns:
+            A ``DriftReport`` with all detected issues.
         """
         report = DriftReport()
+        if check_quality:
+            report.llm_backend = quality_backend
+            defaults = {"ollama": "qwen2.5:3b", "openai": "gpt-4o-mini"}
+            report.llm_model = quality_model or defaults.get(quality_backend)
+        self._warn_unmatched_ignores(report)
 
         if not skip_basic_checks:
             self._check_api_coverage(report)
@@ -87,8 +137,29 @@ class DriftDetector:
 
         return report
 
+    def _warn_unmatched_ignores(self, report: DriftReport) -> None:
+        """Warn once per unmatched --ignore-submodules entry."""
+        if not self.ignore_submodules:
+            return
+        all_unmatched: set[str] = set()
+        for module_name in self.modules:
+            _, unmatched = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
+            all_unmatched |= unmatched
+        for name in sorted(all_unmatched):
+            report.warnings.append(
+                f"--ignore-submodules '{name}' " f"did not match any subpackage"
+            )
+
     def _check_api_coverage(self, report: DriftReport) -> None:
-        """Check all public APIs are documented."""
+        """Compare public APIs against mkdocstrings references.
+
+        Collects all ``:::`` references from markdown files, then
+        iterates over each module's public API. Any API not found
+        in the documented references is added to
+        ``report.missing_in_docs``.
+        """
         refs = self.md_parser.find_mkdocstrings_refs()
         documented = {ref.reference for ref in refs}
 
@@ -103,7 +174,9 @@ class DriftDetector:
                     documented_names[base_module].add(ref)
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_public_apis(module_name)
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
             for api in apis:
                 # Skip Pulser re-exports
                 if self.ignore_pulser_reexports and api.name in self.PULSER_REEXPORTS:
@@ -111,15 +184,19 @@ class DriftDetector:
 
                 is_documented = (
                     api.name in documented_names.get(module_name, set())
-                    or f"{module_name}.{api.name}" in documented
+                    or f"{api.module}.{api.name}" in documented
                     or any(ref.endswith(f".{api.name}") for ref in documented)
                 )
 
                 if not is_documented:
-                    report.missing_in_docs.append(f"{module_name}.{api.name}")
+                    report.missing_in_docs.append(f"{api.module}.{api.name}")
 
     def _check_references(self, report: DriftReport) -> None:
-        """Check all doc references are valid."""
+        """Validate mkdocstrings references resolve to real code.
+
+        Each ``:::`` reference is checked via importlib. Broken ones
+        are added to ``report.broken_references``.
+        """
         refs = self.md_parser.find_mkdocstrings_refs()
         for ref in refs:
             if not self._is_valid_reference(ref.reference):
@@ -128,7 +205,14 @@ class DriftDetector:
                 )
 
     def _is_valid_reference(self, reference: str) -> bool:
-        """Check if reference points to valid code."""
+        """Check if a dotted reference resolves to a Python object.
+
+        Tries progressively shorter module paths (longest first),
+        then resolves remaining parts as attributes.
+
+        Returns:
+            True if the reference resolves, False otherwise.
+        """
         parts = reference.split(".")
         for i in range(len(parts), 0, -1):
             module_path = ".".join(parts[:i])
@@ -143,7 +227,13 @@ class DriftDetector:
         return False
 
     def _check_param_docs(self, report: DriftReport) -> None:
-        """Check function parameters are documented."""
+        """Check that function/method parameters appear in docstrings.
+
+        For each public API with both a docstring and parameters,
+        verifies each parameter name is mentioned in the docstring.
+        Skips internal params (``cls``, enum internals, etc.).
+        Undocumented params are added to ``report.undocumented_params``.
+        """
         ignore_params = {
             "value",
             "names",
@@ -156,7 +246,9 @@ class DriftDetector:
         }
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_public_apis(module_name)
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
             for api in apis:
                 if not api.docstring or not api.parameters:
                     continue
@@ -172,13 +264,18 @@ class DriftDetector:
                 if undocumented:
                     report.undocumented_params.append(
                         {
-                            "name": f"{module_name}.{api.name}",
+                            "name": f"{api.module}.{api.name}",
                             "params": ", ".join(undocumented),
                         }
                     )
 
     def _check_local_links(self, report: DriftReport) -> None:
-        """Check local file links exist."""
+        """Verify local file links in markdown/notebooks resolve.
+
+        Resolves relative, ``..``-prefixed, and absolute paths.
+        Also checks that linked ``.py`` files appear in mkdocs nav.
+        Broken links are added to ``report.broken_local_links``.
+        """
         links = self.md_parser.find_local_links()
         nav_files = self.yaml_parser.get_nav_files()
 
@@ -218,12 +315,17 @@ class DriftDetector:
                         pass
 
     def _check_mkdocs_paths(self, report: DriftReport) -> None:
-        """Check mkdocs.yml nav paths exist."""
+        """Verify all file paths in mkdocs.yml nav exist on disk."""
         broken = self.yaml_parser.check_nav_paths()
         report.broken_mkdocs_paths.extend(broken)
 
     def _check_external_links(self, report: DriftReport, verbose: bool) -> None:
-        """Check external HTTP links."""
+        """Validate external HTTP/HTTPS links from docs.
+
+        Collects URLs from markdown/notebooks and checks each via
+        async HTTP requests (aiohttp) or urllib fallback. Broken
+        links are added to ``report.broken_external_links``.
+        """
         if verbose:
             print("Finding external links...")
         links = self.md_parser.find_external_links()
@@ -252,7 +354,13 @@ class DriftDetector:
         sample_rate: float,
         verbose: bool,
     ) -> None:
-        """Check documentation quality using LLM."""
+        """Evaluate docstring quality using an LLM backend.
+
+        Lazily imports ``QualityChecker`` to avoid hard dependency on
+        ollama/openai. Gracefully skips with a warning if deps are
+        missing or the backend fails to initialize. Issues are added
+        to ``report.quality_issues``.
+        """
         try:
             from .llm_checker import QualityChecker
         except ImportError as e:
@@ -263,13 +371,22 @@ class DriftDetector:
             return
 
         try:
-            checker = QualityChecker(self.root_path, backend, model, api_key)
+            checker = QualityChecker(
+                self.root_path,
+                backend,
+                model,
+                api_key,
+                ignore_submodules=self.ignore_submodules,
+            )
         except (ImportError, RuntimeError, ValueError) as e:
             report.warnings.append(f"Quality checks skipped: {e}")
             return
 
         if verbose:
-            print(f"Running LLM quality checks (backend: {backend})...")
+            print(
+                f"Running LLM quality checks "
+                f"(backend: {backend}, model: {checker.backend.model})..."
+            )
 
         for module_name in self.modules:
             issues = checker.check_module_quality(module_name, verbose, sample_rate)

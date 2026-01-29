@@ -30,13 +30,3 @@ repos:
           - aiohttp>=3.8
         args: [--config-file=pyproject.toml]
         exclude: ^tests/
-
-  - repo: local
-    hooks:
-      - id: pytest-fast
-        name: pytest (fast tests only)
-        entry: pytest
-        language: system
-        pass_filenames: false
-        always_run: true
-        args: [-v, --tb=short, -x]

@@ -11,6 +11,8 @@ from typing import Any
 class LLMBackend(ABC):
     """Abstract base for LLM backends."""
 
+    model: str
+
     @abstractmethod
     def generate(self, prompt: str, temperature: float = 0.1) -> str:
         """Generate completion from prompt."""

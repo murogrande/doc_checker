@@ -35,7 +35,7 @@ def mock_backend():
 def mock_code_analyzer(tmp_path: Path):
     """Mock code analyzer."""
     analyzer = MagicMock()
-    analyzer.get_public_apis.return_value = [
+    apis = [
         SignatureInfo(
             name="test_func",
             module="test_module",
@@ -55,6 +55,8 @@ def mock_code_analyzer(tmp_path: Path):
             kind="function",
         ),
     ]
+    analyzer.get_public_apis.return_value = apis
+    analyzer.get_all_public_apis.return_value = (apis, set())
     return analyzer
 
 
@@ -188,9 +190,11 @@ def test_quality_checker_check_module_quality(
     checker = QualityChecker(tmp_path)
     issues = checker.check_module_quality("test_module", verbose=False)
 
-    # Should check test_func (has docstring) but skip no_docstring_func
-    assert len(issues) == 1
-    assert issues[0].api_name == "test_module.test_func"
+    # Checks both: test_func (LLM issue) and no_docstring_func (no docstring)
+    assert len(issues) == 2
+    names = {i.api_name for i in issues}
+    assert "test_module.test_func" in names
+    assert "test_module.no_docstring_func" in names
 
 
 @patch("doc_checker.llm_checker.get_backend")
@@ -215,6 +219,7 @@ def test_quality_checker_sample_rate(
 
     mock_analyzer = MagicMock()
     mock_analyzer.get_public_apis.return_value = apis
+    mock_analyzer.get_all_public_apis.return_value = (apis, set())
     mock_analyzer_class.return_value = mock_analyzer
     mock_get_backend.return_value = mock_backend
 
@@ -301,10 +306,12 @@ def test_quality_checker_empty_module(
     """Test quality check on module with no APIs."""
     mock_analyzer = MagicMock()
     mock_analyzer.get_public_apis.return_value = []
+    mock_analyzer.get_all_public_apis.return_value = ([], set())
     mock_analyzer_class.return_value = mock_analyzer
     mock_get_backend.return_value = mock_backend
 
     checker = QualityChecker(tmp_path)
     issues = checker.check_module_quality("empty_module")
 
-    assert len(issues) == 0
+    assert len(issues) == 1
+    assert "No public APIs found" in issues[0].message

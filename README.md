@@ -4,7 +4,7 @@ Check documentation drift: broken links, undocumented APIs, invalid references
 
 ## Features
 
-- **API Coverage**: Ensure all public APIs documented
+- **API Coverage**: Ensure all public APIs documented (recursive submodule discovery)
 - **Reference Validation**: Check mkdocstrings references point to valid code
 - **Link Checking**: Verify external HTTP links (async)
 - **Local Links**: Validate file paths in markdown
@@ -42,6 +42,9 @@ doc-checker --check-quality --quality-sample 0.1 --root /path/to/project  # 10% 
 # Custom modules + JSON output
 doc-checker --modules my_module --json --root /path/to/project
 
+# Skip specific submodules (fully qualified paths, warns if unmatched)
+doc-checker --ignore-submodules emu_mps.optimatrix --root /path/to/project
+
 # Combine flags
 doc-checker --check-basic --check-external-links -v --root /path/to/project
 ```
@@ -55,7 +58,7 @@ CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} �
 **Modules:**
 - `models.py` - Dataclasses (SignatureInfo, DocReference, DriftReport, etc.)
 - `parsers.py` - MarkdownParser/YamlParser for mkdocstrings refs and links
-- `code_analyzer.py` - Introspect Python modules via importlib/inspect
+- `code_analyzer.py` - Introspect Python modules via importlib/inspect (recursive via pkgutil.walk_packages)
 - `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
 - `llm_backends.py` - LLMBackend abstraction (Ollama, OpenAI)
 - `llm_checker.py` - QualityChecker for LLM docstring evaluation

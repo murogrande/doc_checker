@@ -19,6 +19,7 @@ class QualityChecker:
         backend_type: str = "ollama",
         model: str | None = None,
         api_key: str | None = None,
+        ignore_submodules: set[str] | None = None,
     ):
         """Initialize quality checker.
 
@@ -27,6 +28,7 @@ class QualityChecker:
             backend_type: "ollama" (default) or "openai"
             model: Model name (uses defaults if None)
             api_key: API key for cloud backends
+            ignore_submodules: Submodule names to skip.
 
         Raises:
             ImportError: If backend package not installed
@@ -35,6 +37,7 @@ class QualityChecker:
         self.root_path = root_path
         self.code_analyzer = CodeAnalyzer(root_path)
         self.backend = get_backend(backend_type, model, api_key)
+        self.ignore_submodules = ignore_submodules
 
     def check_api_quality(
         self, api_name: str, module_name: str, verbose: bool = False
@@ -142,7 +145,23 @@ class QualityChecker:
         """
         import random
 
-        apis = self.code_analyzer.get_public_apis(module_name)
+        apis, _ = self.code_analyzer.get_all_public_apis(
+            module_name, self.ignore_submodules
+        )
+
+        if not apis:
+            if verbose:
+                print(f"No public APIs found in {module_name}")
+            return [
+                QualityIssue(
+                    api_name=module_name,
+                    severity="warning",
+                    category="error",
+                    message=f"No public APIs found in module {module_name}",
+                    suggestion="Check module name or ensure it is installed",
+                    line_reference=None,
+                )
+            ]
 
         if sample_rate < 1.0:
             apis = random.sample(apis, int(len(apis) * sample_rate))
@@ -152,8 +171,7 @@ class QualityChecker:
 
         all_issues = []
         for api in apis:
-            if api.docstring:  # Only check APIs with docstrings
-                issues = self.check_api_quality(api.name, module_name, verbose)
-                all_issues.extend(issues)
+            issues = self.check_api_quality(api.name, module_name, verbose)
+            all_issues.extend(issues)
 
         return all_issues
