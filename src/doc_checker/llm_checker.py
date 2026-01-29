@@ -142,7 +142,21 @@ class QualityChecker:
         """
         import random
 
-        apis = self.code_analyzer.get_public_apis(module_name)
+        apis = self.code_analyzer.get_all_public_apis(module_name)
+
+        if not apis:
+            if verbose:
+                print(f"No public APIs found in {module_name}")
+            return [
+                QualityIssue(
+                    api_name=module_name,
+                    severity="warning",
+                    category="error",
+                    message=f"No public APIs found in module {module_name}",
+                    suggestion="Check module name or ensure it is installed",
+                    line_reference=None,
+                )
+            ]
 
         if sample_rate < 1.0:
             apis = random.sample(apis, int(len(apis) * sample_rate))
@@ -152,8 +166,7 @@ class QualityChecker:
 
         all_issues = []
         for api in apis:
-            if api.docstring:  # Only check APIs with docstrings
-                issues = self.check_api_quality(api.name, module_name, verbose)
-                all_issues.extend(issues)
+            issues = self.check_api_quality(api.name, module_name, verbose)
+            all_issues.extend(issues)
 
         return all_issues

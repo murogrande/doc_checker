@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import pkgutil
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,43 @@ class CodeAnalyzer:
                 continue
 
         return apis
+
+    def get_all_public_apis(self, module_name: str) -> list[SignatureInfo]:
+        """Extract public APIs from a module and all its submodules.
+
+        Uses pkgutil.walk_packages() to discover submodules, then
+        calls get_public_apis() on each.
+
+        Args:
+            module_name: Top-level module name (e.g. "emu_mps").
+
+        Returns:
+            Combined list of SignatureInfo from all submodules.
+        """
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as e:
+            print(f"Warning: Could not import {module_name}: {e}")
+            return []
+
+        all_apis = list(self.get_public_apis(module_name))
+        seen = {(a.module, a.name) for a in all_apis}
+
+        pkg_path = getattr(module, "__path__", None)
+        if pkg_path is None:
+            return all_apis
+
+        for _, submod_name, _ in pkgutil.walk_packages(
+            pkg_path, prefix=module_name + "."
+        ):
+            sub_apis = self.get_public_apis(submod_name)
+            for api in sub_apis:
+                key = (api.module, api.name)
+                if key not in seen:
+                    seen.add(key)
+                    all_apis.append(api)
+
+        return all_apis
 
     def _extract_signature(
         self, name: str, obj: Any, module_name: str

@@ -212,6 +212,23 @@ class TestDriftDetector:
 
         assert report.has_issues() is False
 
+    def test_check_api_coverage_submodule(self, test_project: Path):
+        """Submodule APIs detected as missing from docs."""
+        sub = test_project / "test_pkg" / "sub"
+        sub.mkdir()
+        (sub / "__init__.py").write_text(
+            '__all__ = ["SubHelper"]\nclass SubHelper:\n    "sub helper"\n'
+        )
+
+        # Reimport so walk_packages finds the subpackage
+        sys.modules.pop("test_pkg", None)
+        sys.modules.pop("test_pkg.sub", None)
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        assert "test_pkg.sub.SubHelper" in report.missing_in_docs
+
     def test_skip_basic_checks(self, test_project: Path):
         """Test skip_basic_checks=True skips API coverage, refs, params, local links."""
         detector = DriftDetector(test_project, modules=["test_pkg"])

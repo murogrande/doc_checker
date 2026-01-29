@@ -116,6 +116,41 @@ class TestCodeAnalyzer:
 
         assert apis == []
 
+    def test_get_all_public_apis_with_submodules(self, tmp_path: Path):
+        """Test recursive submodule discovery."""
+        pkg = tmp_path / "nested_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text('__all__ = ["TopFunc"]\ndef TopFunc(): "top"\n')
+
+        sub = pkg / "sub"
+        sub.mkdir()
+        (sub / "__init__.py").write_text('__all__ = ["SubFunc"]\ndef SubFunc(): "sub"\n')
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis = analyzer.get_all_public_apis("nested_pkg")
+            names = {api.name for api in apis}
+            assert "TopFunc" in names
+            assert "SubFunc" in names
+            assert len(names) >= 2
+        finally:
+            sys.modules.pop("nested_pkg", None)
+            sys.modules.pop("nested_pkg.sub", None)
+
+    def test_get_all_public_apis_flat_module(
+        self, sample_module: ModuleType, tmp_path: Path
+    ):
+        """Flat module: get_all_public_apis == get_public_apis."""
+        analyzer = CodeAnalyzer(tmp_path)
+        flat = analyzer.get_public_apis("test_module")
+        recursive = analyzer.get_all_public_apis("test_module")
+        assert {a.name for a in flat} == {a.name for a in recursive}
+
+    def test_get_all_public_apis_nonexistent(self, tmp_path: Path):
+        analyzer = CodeAnalyzer(tmp_path)
+        assert analyzer.get_all_public_apis("nonexistent_module_xyz") == []
+
     def test_module_without_all(self, tmp_path: Path):
         """Test module without __all__ attribute."""
         module_dir = tmp_path / "test_module_no_all"

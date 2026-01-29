@@ -147,7 +147,7 @@ class DriftDetector:
                     documented_names[base_module].add(ref)
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_public_apis(module_name)
+            apis = self.code_analyzer.get_all_public_apis(module_name)
             for api in apis:
                 # Skip Pulser re-exports
                 if self.ignore_pulser_reexports and api.name in self.PULSER_REEXPORTS:
@@ -155,12 +155,12 @@ class DriftDetector:
 
                 is_documented = (
                     api.name in documented_names.get(module_name, set())
-                    or f"{module_name}.{api.name}" in documented
+                    or f"{api.module}.{api.name}" in documented
                     or any(ref.endswith(f".{api.name}") for ref in documented)
                 )
 
                 if not is_documented:
-                    report.missing_in_docs.append(f"{module_name}.{api.name}")
+                    report.missing_in_docs.append(f"{api.module}.{api.name}")
 
     def _check_references(self, report: DriftReport) -> None:
         """Validate mkdocstrings references resolve to real code.
@@ -217,7 +217,7 @@ class DriftDetector:
         }
 
         for module_name in self.modules:
-            apis = self.code_analyzer.get_public_apis(module_name)
+            apis = self.code_analyzer.get_all_public_apis(module_name)
             for api in apis:
                 if not api.docstring or not api.parameters:
                     continue
@@ -233,7 +233,7 @@ class DriftDetector:
                 if undocumented:
                     report.undocumented_params.append(
                         {
-                            "name": f"{module_name}.{api.name}",
+                            "name": f"{api.module}.{api.name}",
                             "params": ", ".join(undocumented),
                         }
                     )
@@ -346,7 +346,10 @@ class DriftDetector:
             return
 
         if verbose:
-            print(f"Running LLM quality checks (backend: {backend})...")
+            print(
+                f"Running LLM quality checks "
+                f"(backend: {backend}, model: {checker.backend.model})..."
+            )
 
         for module_name in self.modules:
             issues = checker.check_module_quality(module_name, verbose, sample_rate)
