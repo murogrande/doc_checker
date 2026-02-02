@@ -78,6 +78,11 @@ def main() -> int:
         default=[],
         help="Submodule paths to skip (e.g. emu_mps.optimatrix)",
     )
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="Report issues but always exit 0 (non-blocking)",
+    )
 
     args = parser.parse_args()
 
@@ -134,6 +139,8 @@ def main() -> int:
         else:
             print(format_report(report))
 
+        if args.warn_only:
+            return 0
         return 1 if report.has_issues() else 0
 
     # Standalone external links check
@@ -154,7 +161,9 @@ def main() -> int:
                     url = link_info.get("url", "unknown")
                     location = link_info.get("location", "unknown")
                     print(f"  {location}: {url} (status: {status})")
-                return 1
+                if not args.warn_only:
+                    return 1
+                return 0
             else:
                 print("All external links OK")
                 return 0

@@ -45,8 +45,52 @@ doc-checker --modules my_module --json --root /path/to/project
 # Skip specific submodules (fully qualified paths, warns if unmatched)
 doc-checker --ignore-submodules emu_mps.optimatrix --root /path/to/project
 
+# Non-blocking (report issues but exit 0)
+doc-checker --check-basic --warn-only --root /path/to/project
+
 # Combine flags
 doc-checker --check-basic --check-external-links -v --root /path/to/project
+```
+
+## Pre-commit Hook
+
+Add to your `.pre-commit-config.yaml`:
+
+```yaml
+- repo: https://github.com/murogrande/doc_checker
+  rev: main  # use a tag for stable usage
+  hooks:
+    - id: doc-checker-basic
+      args: ["--ignore-submodules", "emu_mps.optimatrix"]
+    - id: doc-checker-links
+      verbose: true
+```
+
+Hooks use `language: system`, so `doc-checker` must be installed in your environment:
+
+```bash
+# Install directly from GitHub (no clone needed)
+pip install git+https://github.com/murogrande/doc_checker.git
+
+# Or clone and install locally
+git clone https://github.com/murogrande/doc_checker.git
+pip install -e ./doc_checker
+```
+
+You can also add it as a dev dependency in your `pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+dev = [
+    "doc-checker @ git+https://github.com/murogrande/doc_checker.git",
+]
+```
+
+Use `--warn-only` for non-blocking checks:
+
+```yaml
+    - id: doc-checker-basic
+      args: ["--warn-only"]  # reports issues without failing the commit
 ```
 
 ## Architecture
