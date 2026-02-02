@@ -267,6 +267,180 @@ class TestDriftDetector:
         assert len(report_skip.broken_mkdocs_paths) == 0
 
 
+class TestDocstringLocalLinks:
+    """Tests for broken local links in Python docstrings."""
+
+    def test_docstring_broken_local_link(self, tmp_path: Path):
+        """Broken link in docstring detected."""
+        mod = tmp_path / "link_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text(
+            '__all__ = ["Foo"]\n'
+            "class Foo:\n"
+            '    """See [guide](../docs/missing.md) for details."""\n'
+        )
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Docs\n::: link_pkg.Foo\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["link_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            assert len(broken) == 1
+            assert "missing.md" in broken[0]["path"]
+            assert "link_pkg.Foo" in broken[0]["location"]
+        finally:
+            sys.modules.pop("link_pkg", None)
+
+    def test_docstring_valid_local_link(self, tmp_path: Path):
+        """Valid link in docstring not flagged."""
+        mod = tmp_path / "ok_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text(
+            '__all__ = ["Bar"]\n'
+            "class Bar:\n"
+            '    """See [guide](guide.md) for info."""\n'
+        )
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Docs\n::: ok_pkg.Bar\n")
+        (docs / "guide.md").write_text("# Guide\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["ok_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            assert len(broken) == 0
+        finally:
+            sys.modules.pop("ok_pkg", None)
+
+    def test_docstring_link_with_anchor_valid(self, tmp_path: Path):
+        """Link with #fragment resolves when file exists."""
+        mod = tmp_path / "anchor_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text(
+            '__all__ = ["Cfg"]\n'
+            "class Cfg:\n"
+            '    """Check [precision](advanced/config.md#precision)."""\n'
+        )
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        adv = docs / "advanced"
+        adv.mkdir()
+        (adv / "config.md").write_text("# Config\n## precision\n")
+        (docs / "index.md").write_text("# Docs\n::: anchor_pkg.Cfg\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["anchor_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            assert len(broken) == 0
+        finally:
+            sys.modules.pop("anchor_pkg", None)
+
+    def test_docstring_link_with_anchor_broken(self, tmp_path: Path):
+        """Link with #fragment flagged when file missing."""
+        mod = tmp_path / "brk_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text(
+            '__all__ = ["X"]\n' "class X:\n" '    """See [section](missing.md#foo)."""\n'
+        )
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Docs\n::: brk_pkg.X\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["brk_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            assert len(broken) == 1
+            assert "missing.md#foo" in broken[0]["path"]
+        finally:
+            sys.modules.pop("brk_pkg", None)
+
+    def test_docstring_link_resolves_relative_to_mkdocstrings_page(self, tmp_path: Path):
+        """Link resolves relative to the ::: page, not docs root."""
+        mod = tmp_path / "rel_pkg"
+        mod.mkdir()
+        # Docstring has relative link "advanced/config.md"
+        (mod / "__init__.py").write_text(
+            '__all__ = ["Cls"]\n'
+            "class Cls:\n"
+            '    """See [cfg](advanced/config.md)."""\n'
+        )
+        docs = tmp_path / "docs"
+        sub = docs / "rel_pkg"
+        sub.mkdir(parents=True)
+        # ::: ref lives in docs/rel_pkg/api.md
+        (sub / "api.md").write_text("::: rel_pkg.Cls\n")
+        # Target file at docs/rel_pkg/advanced/config.md
+        adv = sub / "advanced"
+        adv.mkdir()
+        (adv / "config.md").write_text("# Config\n")
+        (docs / "index.md").write_text("# Docs\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["rel_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            # Should NOT be flagged — resolves from api.md's dir
+            assert len(broken) == 0
+        finally:
+            sys.modules.pop("rel_pkg", None)
+
+    def test_docstring_link_resolves_with_reexported_api(self, tmp_path: Path):
+        """Link resolves when ::: uses full path but API is re-exported.
+
+        Simulates: ::: pkg.sub.Cls in docs/pkg/api.md, but API discovered
+        as pkg.Cls via __init__.py re-export.
+        """
+        pkg = tmp_path / "reexp_pkg"
+        pkg.mkdir()
+        sub = pkg / "sub"
+        sub.mkdir()
+        (sub / "__init__.py").write_text(
+            "class Cls:\n" '    """See [cfg](advanced/config.md)."""\n'
+        )
+        (pkg / "__init__.py").write_text('from .sub import Cls\n__all__ = ["Cls"]\n')
+        docs = tmp_path / "docs"
+        pkg_docs = docs / "reexp_pkg"
+        pkg_docs.mkdir(parents=True)
+        # ::: uses full submodule path
+        (pkg_docs / "api.md").write_text("::: reexp_pkg.sub.Cls\n")
+        adv = pkg_docs / "advanced"
+        adv.mkdir()
+        (adv / "config.md").write_text("# Config\n")
+        (docs / "index.md").write_text("# Docs\n")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        sys.path.insert(0, str(tmp_path))
+        try:
+            detector = DriftDetector(tmp_path, modules=["reexp_pkg"])
+            report = detector.check_all()
+            broken = [
+                b for b in report.broken_local_links if "docstring" in b["location"]
+            ]
+            assert len(broken) == 0
+        finally:
+            sys.modules.pop("reexp_pkg", None)
+            sys.modules.pop("reexp_pkg.sub", None)
+
+
 class TestQualityChecks:
     """Tests for LLM quality checks integration."""
 

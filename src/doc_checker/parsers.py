@@ -29,9 +29,10 @@ class MarkdownParser:
         r"\[([^\]]*)\]\((https?://[^)]+)\)"
     )  # identiy [Documentation](http://example.org/docs)
     LOCAL_LINK_PATTERN = re.compile(
-        r"\[([^\]]*)\]\(([^)]+?(?:\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml))\)"
+        r"\[([^\]]*)\]\(([^)]+?(?:\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml)(?:#[^)]*)?)\)"
     )  # identifies [source code](../src/utils.py) and [config](./config.yml)
     # and [notebook](docs/example.ipynb) and [docs](README.md)
+    # also matches anchors: [section](config.md#precision)
     BARE_URL_PATTERN = re.compile(
         r"(?<![(\[])(https?://[^\s\)>\]\"']+)"
     )  # identify check https://example.com for more info
@@ -205,6 +206,35 @@ class MarkdownParser:
                         )
         except Exception as e:
             print(f"Warning: Could not read notebook {file_path}: {e}")
+        return links
+
+    def parse_local_links_in_text(
+        self,
+        text: str,
+        source_path: Path,
+    ) -> list[LocalLink]:
+        """Parse local file links from arbitrary text (e.g. docstrings).
+
+        Args:
+            text: Text content to scan for local links.
+            source_path: Path used as file_path in returned LocalLink objects.
+
+        Returns:
+            List of LocalLink objects found in text.
+        """
+        links: list[LocalLink] = []
+        for line_num, line in enumerate(text.split("\n"), 1):
+            for match in self.LOCAL_LINK_PATTERN.finditer(line):
+                link_text, path = match.groups()
+                if not path.startswith(("http://", "https://")):
+                    links.append(
+                        LocalLink(
+                            path=path,
+                            text=link_text,
+                            file_path=source_path,
+                            line_number=line_num,
+                        )
+                    )
         return links
 
     def _parse_local_links_in_file(self, file_path: Path) -> list[LocalLink]:

@@ -69,6 +69,7 @@ class DriftDetector:
         self.ignore_pulser_reexports = ignore_pulser_reexports
         self.ignore_submodules: set[str] = set(ignore_submodules or [])
 
+        # 4 collaborators
         self.code_analyzer = CodeAnalyzer(root_path)
         self.md_parser = MarkdownParser(root_path / "docs")
         self.yaml_parser = YamlParser(root_path / "mkdocs.yml", root_path / "docs")
@@ -281,13 +282,14 @@ class DriftDetector:
 
         for link in links:
             link_dir = link.file_path.parent
-            resolved = (link_dir / link.path).resolve()
+            file_path = link.path.split("#")[0]
+            resolved = (link_dir / file_path).resolve()
 
             # Try other resolution strategies
-            if not resolved.exists() and link.path.startswith(".."):
-                resolved = (self.root_path / "docs" / link.path).resolve()
-            if not resolved.exists() and link.path.startswith("/"):
-                resolved = (self.root_path / link.path.lstrip("/")).resolve()
+            if not resolved.exists() and file_path.startswith(".."):
+                resolved = (self.root_path / "docs" / file_path).resolve()
+            if not resolved.exists() and file_path.startswith("/"):
+                resolved = (self.root_path / file_path.lstrip("/")).resolve()
 
             if not resolved.exists():
                 report.broken_local_links.append(
@@ -299,7 +301,7 @@ class DriftDetector:
                 )
             else:
                 # Check .py files are in nav
-                if link.path.endswith(".py") and nav_files is not None:
+                if file_path.endswith(".py") and nav_files is not None:
                     try:
                         rel_path = resolved.relative_to(self.root_path / "docs")
                         if str(rel_path) not in nav_files:
@@ -313,6 +315,51 @@ class DriftDetector:
                             )
                     except ValueError:
                         pass
+
+        # Check local links in Python docstrings
+        # Build map: API fqn → md file dir (mkdocstrings renders
+        # docstrings into the page that has the ::: directive, so
+        # relative links resolve from that page's directory).
+        docs_path = self.root_path / "docs"
+        refs = self.md_parser.find_mkdocstrings_refs()
+        ref_dirs: dict[str, Path] = {}
+        for ref in refs:
+            # Index by full ref and by short name so both
+            # "emu_mps.mps.MPS" and "emu_mps.MPS" resolve
+            ref_dirs[ref.reference] = ref.file_path.parent
+            short = ref.reference.split(".")[0] + "." + ref.reference.rsplit(".", 1)[-1]
+            if short != ref.reference:
+                ref_dirs.setdefault(short, ref.file_path.parent)
+
+        for module_name in self.modules:
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module_name, self.ignore_submodules
+            )
+            for api in apis:
+                if not api.docstring:
+                    continue
+                fqn = f"{api.module}.{api.name}"
+                # Find the md page directory where this API's
+                # docstring will be rendered by mkdocstrings
+                base_dir = ref_dirs.get(fqn, docs_path)
+                ds_links = self.md_parser.parse_local_links_in_text(
+                    api.docstring, base_dir
+                )
+                for link in ds_links:
+                    file_path = link.path.split("#")[0]
+                    resolved = (base_dir / file_path).resolve()
+                    if not resolved.exists() and file_path.startswith(".."):
+                        resolved = (docs_path / file_path).resolve()
+                    if not resolved.exists() and file_path.startswith("/"):
+                        resolved = (self.root_path / file_path.lstrip("/")).resolve()
+                    if not resolved.exists():
+                        report.broken_local_links.append(
+                            {
+                                "path": link.path,
+                                "location": (f"{fqn} (docstring):{link.line_number}"),
+                                "text": link.text,
+                            }
+                        )
 
     def _check_mkdocs_paths(self, report: DriftReport) -> None:
         """Verify all file paths in mkdocs.yml nav exist on disk."""
