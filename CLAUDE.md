@@ -38,40 +38,31 @@ doc-checker --ignore-submodules emu_mps.optimatrix --root .  # skip submodules
 ## Architecture
 
 ```
-CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} → DriftReport → formatters
+CLI (cli.py) → DriftDetector (checkers.py) → {parsers, code_analyzer, link_checker, llm_checker} → DriftReport (models.py) → formatters.py
 ```
 
-**Modules (src/doc_checker/):**
-- `models.py` - Dataclasses: SignatureInfo, DocReference, LocalLink, ExternalLink, QualityIssue, DriftReport
-- `parsers.py` - MarkdownParser/YamlParser: extract mkdocstrings refs, links from md/notebooks/mkdocs.yml
-- `code_analyzer.py` - CodeAnalyzer: introspect Python modules via importlib/inspect. `get_all_public_apis()` recursively discovers sub-packages (not .py files) via pkgutil.walk_packages(), returns `(apis, unmatched_ignores)` tuple
-- `link_checker.py` - LinkChecker: async HTTP validation (aiohttp or urllib fallback)
-- `llm_backends.py` - LLMBackend ABC + OllamaBackend, OpenAIBackend
-- `llm_checker.py` - QualityChecker: LLM evaluates docstrings
-- `prompts.py` - LLM prompt templates
-- `checkers.py` - DriftDetector: orchestrates all checks via check_all()
-- `formatters.py` - format_report() renders text/JSON
-- `cli.py` - argparse entry point
+- `DriftDetector.check_all()` is the main entry point, orchestrates all checks
+- `CodeAnalyzer.get_all_public_apis()` recursively discovers sub-packages via `pkgutil.walk_packages()`, returns `(apis, unmatched_ignores)` tuple
+- `MarkdownParser`/`YamlParser` extract mkdocstrings `:::` refs and links from md/notebooks/mkdocs.yml; `parse_local_links_in_text()` scans Python docstrings for local links
+- `LinkChecker` uses async aiohttp with urllib fallback
+- `QualityChecker` and LLM backends are lazily imported in `_check_quality()` to avoid hard deps on ollama/openai
+- `LLMBackend` ABC in `llm_backends.py` with `OllamaBackend` and `OpenAIBackend` implementations
 
-**Key methods:**
-- `DriftDetector.check_all(skip_basic_checks=False)`: Main entry, skip_basic_checks=True for standalone external/quality checks
-- `DriftDetector._check_api_coverage`: Compare get_all_public_apis() (recursive) vs find_mkdocstrings_refs()
-- `DriftDetector._is_valid_reference`: Validate mkdocstrings refs via importlib
-- `DriftDetector._check_quality`: LLM quality (graceful fallback if deps missing)
+**Key design notes:**
+- `PULSER_REEXPORTS` in `DriftDetector` is hardcoded (TODO: make configurable via CLI)
+- No flags → `--check-all` auto-set; `--check-basic` skips external/quality; `--check-external-links`/`--check-quality` skip basic checks when used standalone
+- Default target modules: `["emu_mps", "emu_sv"]` — override with `--modules`
+- OpenAI backend needs `OPENAI_API_KEY` env var
+- LLM defaults: qwen2.5:3b (ollama), gpt-4o-mini (openai)
+- Docstring local links resolve relative to the md file containing the `:::` directive (matching mkdocstrings rendering); short-name lookup handles re-exported APIs (e.g. `:::` has `pkg.sub.Cls` but API discovered as `pkg.Cls`)
 
-**CLI flags:**
-- No flags → `--check-all` auto-set (basic + external + quality)
-- `--check-basic` → basic checks only (API coverage, refs, params, local links, mkdocs)
-- `--check-external-links` → external links only (skips basic checks)
-- `--check-quality` → LLM quality only (runs basic checks too)
-- `--ignore-submodules` → skip submodules by fully qualified path (e.g. `emu_mps.optimatrix`), warns if unmatched
-- Default modules: `["emu_mps", "emu_sv"]` - override with `--modules`
-- OpenAI needs `OPENAI_API_KEY` env var
-- LLM models: qwen2.5:3b (ollama), gpt-4o-mini (openai)
+## Tests
+
+Tests use `tmp_path`-based fixtures in `conftest.py`: `tmp_docs`, `sample_markdown`, `sample_notebook`, `sample_mkdocs_yml`. Each creates a temporary project structure for isolated testing.
 
 ## Config
 
 - line-length: 90 (black/ruff)
 - mypy: strict (excludes tests/), ignores ollama/openai stubs
 - Python >=3.9
-- pre-commit runs: black, ruff --fix, mypy, pytest -x
+- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, black, ruff --fix, mypy

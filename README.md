@@ -7,7 +7,7 @@ Check documentation drift: broken links, undocumented APIs, invalid references
 - **API Coverage**: Ensure all public APIs documented (recursive submodule discovery)
 - **Reference Validation**: Check mkdocstrings references point to valid code
 - **Link Checking**: Verify external HTTP links (async)
-- **Local Links**: Validate file paths in markdown
+- **Local Links**: Validate file paths in markdown and Python docstrings (resolves relative to mkdocstrings page)
 - **Parameter Docs**: Check function parameters documented
 - **mkdocs.yml Validation**: Verify nav paths exist
 - **LLM Quality Checks**: Evaluate docstring quality (english, code-alignment, completeness)
@@ -80,6 +80,9 @@ Missing from docs (2):
 
 Broken references (1):
   - emu_mps.old_class in docs/api.md:42
+
+Broken local links in docstrings (1):
+  emu_mps.MPS (docstring):20: advanced/missing.md#precision
 
 Broken external links (1):
   docs/guide.md:15: https://broken-link.com (status: 404)
