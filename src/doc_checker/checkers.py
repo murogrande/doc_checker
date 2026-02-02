@@ -69,7 +69,7 @@ class DriftDetector:
         self.ignore_pulser_reexports = ignore_pulser_reexports
         self.ignore_submodules: set[str] = set(ignore_submodules or [])
 
-        # 4 collaborators are
+        # 4 collaborators
         self.code_analyzer = CodeAnalyzer(root_path)
         self.md_parser = MarkdownParser(root_path / "docs")
         self.yaml_parser = YamlParser(root_path / "mkdocs.yml", root_path / "docs")
