@@ -1,0 +1,15 @@
+- id: doc-checker-basic
+  name: doc-checker (basic)
+  entry: doc-checker --check-basic
+  language: python
+  pass_filenames: false
+  always_run: false
+  types_or: [markdown, yaml, python, jupyter]
+
+- id: doc-checker-links
+  name: doc-checker (external links)
+  entry: doc-checker --check-external-links
+  language: python
+  pass_filenames: false
+  always_run: false
+  types_or: [markdown, jupyter]
