@@ -33,6 +33,11 @@ doc-checker --check-quality --llm-backend openai --root .   # LLM via openai
 doc-checker --check-quality --quality-sample 0.1 --root .   # sample 10% of APIs
 doc-checker --modules my_module --json --root .             # custom modules, JSON out
 doc-checker --ignore-submodules emu_mps.optimatrix --root .  # skip submodules
+doc-checker --check-basic --warn-only --root .               # non-blocking (always exit 0)
+
+# Pre-commit (from consumer repo)
+pre-commit run doc-checker-basic --all-files
+pre-commit run doc-checker-links --all-files
 ```
 
 ## Architecture
@@ -51,6 +56,8 @@ CLI (cli.py) → DriftDetector (checkers.py) → {parsers, code_analyzer, link_c
 **Key design notes:**
 - `PULSER_REEXPORTS` in `DriftDetector` is hardcoded (TODO: make configurable via CLI)
 - No flags → `--check-all` auto-set; `--check-basic` skips external/quality; `--check-external-links`/`--check-quality` skip basic checks when used standalone
+- `--warn-only` prints report but always exits 0 (non-blocking for pre-commit/CI)
+- `.pre-commit-hooks.yaml` provides `doc-checker-basic` and `doc-checker-links` hooks (`language: system`, `pass_filenames: false`)
 - Default target modules: `["emu_mps", "emu_sv"]` — override with `--modules`
 - OpenAI backend needs `OPENAI_API_KEY` env var
 - LLM defaults: qwen2.5:3b (ollama), gpt-4o-mini (openai)

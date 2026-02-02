@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from doc_checker.checkers import DriftDetector
+from doc_checker.cli import main
 from doc_checker.formatters import format_report
 
 
@@ -413,3 +414,44 @@ class TestCLIBehavior:
 
         # Quality checker was called
         mock_checker.check_module_quality.assert_called()
+
+
+class TestWarnOnly:
+    """Test --warn-only flag."""
+
+    def test_warn_only_exits_zero_with_issues(self, integration_project: Path):
+        """--warn-only should exit 0 even when issues exist."""
+        index_md = integration_project / "docs" / "index.md"
+        content = index_md.read_text()
+        content += "\n::: my_lib.NonExistentClass\n"
+        index_md.write_text(content)
+
+        argv = [
+            "doc-checker",
+            "--check-basic",
+            "--warn-only",
+            "--modules",
+            "my_lib",
+            "--root",
+            str(integration_project),
+        ]
+        with patch("sys.argv", argv):
+            assert main() == 0
+
+    def test_without_warn_only_exits_one_with_issues(self, integration_project: Path):
+        """Without --warn-only should exit 1 when issues exist."""
+        index_md = integration_project / "docs" / "index.md"
+        content = index_md.read_text()
+        content += "\n::: my_lib.NonExistentClass\n"
+        index_md.write_text(content)
+
+        argv = [
+            "doc-checker",
+            "--check-basic",
+            "--modules",
+            "my_lib",
+            "--root",
+            str(integration_project),
+        ]
+        with patch("sys.argv", argv):
+            assert main() == 1
