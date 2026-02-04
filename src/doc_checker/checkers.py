@@ -275,6 +275,8 @@ class DriftDetector:
 
         Resolves relative, ``..``-prefixed, and absolute paths.
         Also checks that linked ``.py`` files appear in mkdocs nav.
+        Enforces mkdocs-jupyter rules: from ``.ipynb`` sources, notebook
+        links must omit ``.ipynb`` extension (URL-style routing).
         Broken links are added to ``report.broken_local_links``.
         """
         links = self.md_parser.find_local_links()
