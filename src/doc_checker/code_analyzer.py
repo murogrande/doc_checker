@@ -40,7 +40,7 @@ class CodeAnalyzer:
         """
         try:
             module = importlib.import_module(module_name)
-        except ImportError as e:
+        except (ImportError, SyntaxError) as e:
             print(f"Warning: Could not import {module_name}: {e}")
             return []
 
@@ -89,7 +89,7 @@ class CodeAnalyzer:
 
         try:
             module = importlib.import_module(module_name)
-        except ImportError as e:
+        except (ImportError, SyntaxError) as e:
             print(f"Warning: Could not import {module_name}: {e}")
             return [], set()
 
