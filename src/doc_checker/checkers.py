@@ -293,8 +293,9 @@ class DriftDetector:
             if not resolved.exists() and file_path.startswith("/"):
                 resolved = (self.root_path / file_path.lstrip("/")).resolve()
 
-            # mkdocs URL-style resolution fallback: treat source file as directory
-            # e.g. page.md or notebook.ipynb -> page/ or notebook/ in URL space
+            # mkdocs URL-style resolution: mkdocs serves page.md at /page/ URL,
+            # so relative links resolve from /page/, not /. We simulate this by
+            # treating the source file's stem as an extra directory level.
             if not resolved.exists() and file_path.startswith(".."):
                 virtual_dir = link_dir / link.file_path.stem
                 resolved = (virtual_dir / file_path).resolve()

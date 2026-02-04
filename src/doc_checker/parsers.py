@@ -28,15 +28,13 @@ class MarkdownParser:
     MARKDOWN_LINK_PATTERN = re.compile(
         r"\[([^\]]*)\]\((https?://[^)]+)\)"
     )  # identiy [Documentation](http://example.org/docs)
+    # Local link pattern components (combined below)
+    _FILE_EXTENSIONS = r"\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml"
+    _PATH_WITH_EXT = rf"[^)]+?(?:{_FILE_EXTENSIONS})(?:#[^)]*)?"
+    _RELATIVE_PATH = r"\.\.?/[^)]+"  # ./ or ../ without extension (mkdocs internal)
     LOCAL_LINK_PATTERN = re.compile(
-        r"\[([^\]]*)\]\(("
-        r"[^)]+?(?:\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml)(?:#[^)]*)?|"
-        r"\.\.?/[^)]+"  # relative path without extension (./ or ../)
-        r")\)"
+        rf"\[([^\]]*)\]\(({_PATH_WITH_EXT}|{_RELATIVE_PATH})\)"
     )
-    # Matches: [source](../src/utils.py), [config](./config.yml), [docs](README.md)
-    # Also anchors: [section](config.md#precision)
-    # Also mkdocs internal links: [page](../path/to/page/#anchor)
     BARE_URL_PATTERN = re.compile(
         r"(?<![(\[])(https?://[^\s\)>\]\"']+)"
     )  # identify check https://example.com for more info

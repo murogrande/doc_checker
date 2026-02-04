@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from doc_checker.parsers import MarkdownParser, YamlParser
@@ -182,8 +183,6 @@ class TestParserEdgeCases:
 
     def test_notebook_cell_source_as_string(self, tmp_docs: Path):
         """Notebook with source as string (not list) still parses."""
-        import json
-
         nb_file = tmp_docs / "string_source.ipynb"
         notebook = {"cells": [{"source": "[link](https://example.com)"}]}
         nb_file.write_text(json.dumps(notebook))
@@ -210,8 +209,6 @@ class TestParserEdgeCases:
 
     def test_notebook_cell_missing_source(self, tmp_docs: Path):
         """Notebook cell without source key handled gracefully."""
-        import json
-
         nb_file = tmp_docs / "no_source.ipynb"
         notebook = {"cells": [{"cell_type": "code"}]}
         nb_file.write_text(json.dumps(notebook))

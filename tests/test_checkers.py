@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -151,8 +152,6 @@ class TestDriftDetector:
 
     def test_check_local_links_mkdocs_url_style(self, test_project: Path):
         """Test mkdocs URL-style resolution for notebook internal links."""
-        import json
-
         # Create structure: docs/pkg/notebooks/tutorial.ipynb
         # with link ../../advanced/guide/ -> docs/pkg/advanced/guide.md
         notebooks = test_project / "docs" / "pkg" / "notebooks"
@@ -175,8 +174,6 @@ class TestDriftDetector:
 
     def test_check_local_links_notebook_without_extension(self, test_project: Path):
         """Test notebook link to notebook without .ipynb extension."""
-        import json
-
         # Create structure: docs/pkg_a/notebooks/source.ipynb
         # with link ../../../pkg_b/notebooks/target -> docs/pkg_b/notebooks/target.ipynb
         pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
@@ -200,8 +197,6 @@ class TestDriftDetector:
 
     def test_check_local_links_notebook_with_extension_broken(self, test_project: Path):
         """Test notebook link WITH .ipynb extension is flagged as broken."""
-        import json
-
         # mkdocs-jupyter uses URL-style routing, so explicit .ipynb breaks
         pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
         pkg_a.mkdir(parents=True)
@@ -232,8 +227,6 @@ class TestDriftDetector:
         self, test_project: Path
     ):
         """Test markdown link to notebook MUST have .ipynb extension."""
-        import json
-
         # Create structure: docs/benchmarks/perf.md
         # with link ../notebooks/tutorial (no extension) -> should be broken
         benchmarks = test_project / "docs" / "benchmarks"
