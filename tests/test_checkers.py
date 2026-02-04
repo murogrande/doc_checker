@@ -198,6 +198,36 @@ class TestDriftDetector:
         # Link should resolve to .ipynb file (notebooks can omit extension)
         assert not any("target" in link["path"] for link in report.broken_local_links)
 
+    def test_check_local_links_notebook_with_extension_broken(self, test_project: Path):
+        """Test notebook link WITH .ipynb extension is flagged as broken."""
+        import json
+
+        # mkdocs-jupyter uses URL-style routing, so explicit .ipynb breaks
+        pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
+        pkg_a.mkdir(parents=True)
+        pkg_b = test_project / "docs" / "pkg_b" / "notebooks"
+        pkg_b.mkdir(parents=True)
+
+        # Create notebook with link INCLUDING .ipynb extension (wrong for notebooks)
+        nb = {
+            "cells": [
+                {"source": ["See [other](../../../pkg_b/notebooks/target.ipynb)\n"]}
+            ]
+        }
+        (pkg_a / "source.ipynb").write_text(json.dumps(nb))
+
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Target"]}]}
+        (pkg_b / "target.ipynb").write_text(json.dumps(target_nb))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should be flagged - notebooks must omit .ipynb extension
+        broken = [x for x in report.broken_local_links if "target.ipynb" in x["path"]]
+        assert len(broken) == 1
+        assert "omit .ipynb" in broken[0].get("reason", "")
+
     def test_check_local_links_md_to_notebook_requires_extension(
         self, test_project: Path
     ):

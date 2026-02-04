@@ -317,6 +317,18 @@ class DriftDetector:
                     }
                 )
             else:
+                # mkdocs-jupyter: notebooks use URL-style routing, so .ipynb
+                # extension in links from notebooks will break (404)
+                is_notebook_source = link.file_path.suffix == ".ipynb"
+                if is_notebook_source and file_path.endswith(".ipynb"):
+                    report.broken_local_links.append(
+                        {
+                            "path": link.path,
+                            "location": f"{link.file_path}:{link.line_number}",
+                            "text": link.text,
+                            "reason": "notebook links should omit .ipynb extension",
+                        }
+                    )
                 # Check .py files are in nav
                 if file_path.endswith(".py") and nav_files is not None:
                     try:
