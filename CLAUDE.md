@@ -62,6 +62,7 @@ CLI (cli.py) → DriftDetector (checkers.py) → {parsers, code_analyzer, link_c
 - OpenAI backend needs `OPENAI_API_KEY` env var
 - LLM defaults: qwen2.5:3b (ollama), gpt-4o-mini (openai)
 - Docstring local links resolve relative to the md file containing the `:::` directive (matching mkdocstrings rendering); short-name lookup handles re-exported APIs (e.g. `:::` has `pkg.sub.Cls` but API discovered as `pkg.Cls`)
+- mkdocs internal links without extension (e.g. `../path/to/page`) resolve to both `.md` and `.ipynb` files
 
 ## Tests
 

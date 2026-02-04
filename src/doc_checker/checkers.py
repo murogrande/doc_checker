@@ -282,7 +282,7 @@ class DriftDetector:
 
         for link in links:
             link_dir = link.file_path.parent
-            file_path = link.path.split("#")[0]
+            file_path = link.path.split("#")[0].rstrip("/")
             resolved = (link_dir / file_path).resolve()
 
             # Try other resolution strategies
@@ -290,6 +290,20 @@ class DriftDetector:
                 resolved = (self.root_path / "docs" / file_path).resolve()
             if not resolved.exists() and file_path.startswith("/"):
                 resolved = (self.root_path / file_path.lstrip("/")).resolve()
+
+            # mkdocs URL-style resolution: treat source file as directory
+            # e.g. notebooks/file.ipynb -> notebooks/file/ in URL space
+            # so ../../path resolves relative to that virtual directory
+            if not resolved.exists() and file_path.startswith(".."):
+                virtual_dir = link_dir / link.file_path.stem
+                resolved = (virtual_dir / file_path).resolve()
+                # mkdocs links without extension resolve to .md or .ipynb files
+                if not resolved.exists() and not resolved.suffix:
+                    for ext in (".md", ".ipynb"):
+                        resolved_ext = resolved.with_suffix(ext)
+                        if resolved_ext.exists():
+                            resolved = resolved_ext
+                            break
 
             if not resolved.exists():
                 report.broken_local_links.append(

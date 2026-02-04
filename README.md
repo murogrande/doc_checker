@@ -7,7 +7,7 @@ Check documentation drift: broken links, undocumented APIs, invalid references
 - **API Coverage**: Ensure all public APIs documented (recursive submodule discovery)
 - **Reference Validation**: Check mkdocstrings references point to valid code
 - **Link Checking**: Verify external HTTP links (async)
-- **Local Links**: Validate file paths in markdown and Python docstrings (resolves relative to mkdocstrings page)
+- **Local Links**: Validate file paths in markdown/notebooks and Python docstrings (resolves relative to mkdocstrings page; mkdocs-style links without extension resolve to .md/.ipynb)
 - **Parameter Docs**: Check function parameters documented
 - **mkdocs.yml Validation**: Verify nav paths exist
 - **LLM Quality Checks**: Evaluate docstring quality (english, code-alignment, completeness)

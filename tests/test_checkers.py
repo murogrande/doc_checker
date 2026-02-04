@@ -149,6 +149,63 @@ class TestDriftDetector:
             "../script.py" in link["path"] for link in report.broken_local_links
         )
 
+    def test_check_local_links_mkdocs_url_style(self, test_project: Path):
+        """Test mkdocs URL-style resolution for notebook internal links."""
+        import json
+
+        # Create structure: docs/pkg/notebooks/tutorial.ipynb
+        # with link ../../advanced/guide/ -> docs/pkg/advanced/guide.md
+        notebooks = test_project / "docs" / "pkg" / "notebooks"
+        notebooks.mkdir(parents=True)
+        advanced = test_project / "docs" / "pkg" / "advanced"
+        advanced.mkdir(parents=True)
+
+        # Create notebook with mkdocs-style internal link
+        nb = {"cells": [{"source": ["See [guide](../../advanced/guide/#section)\n"]}]}
+        (notebooks / "tutorial.ipynb").write_text(json.dumps(nb))
+
+        # Create target file (mkdocs resolves guide/ to guide.md)
+        (advanced / "guide.md").write_text("# Guide")
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should resolve via mkdocs URL-style (not file-style)
+        assert not any("guide" in link["path"] for link in report.broken_local_links)
+
+    def test_check_local_links_mkdocs_url_style_ipynb(self, test_project: Path):
+        """Test mkdocs URL-style resolution for notebook-to-notebook links."""
+        import json
+
+        # Create structure: docs/emu_sv/notebooks/getting_started.ipynb
+        # with link ../../../emu_mps/notebooks/getting_started -> .ipynb target
+        sv_notebooks = test_project / "docs" / "emu_sv" / "notebooks"
+        sv_notebooks.mkdir(parents=True)
+        mps_notebooks = test_project / "docs" / "emu_mps" / "notebooks"
+        mps_notebooks.mkdir(parents=True)
+
+        # Source notebook with mkdocs internal link (no extension)
+        nb = {
+            "cells": [
+                {
+                    "source": [
+                        "See the [emu-mps tutorial]"
+                        "(../../../emu_mps/notebooks/getting_started)\n"
+                    ]
+                }
+            ]
+        }
+        (sv_notebooks / "getting_started.ipynb").write_text(json.dumps(nb))
+
+        # Target notebook
+        (mps_notebooks / "getting_started.ipynb").write_text(json.dumps({"cells": []}))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should resolve to .ipynb
+        assert not any("emu_mps" in link["path"] for link in report.broken_local_links)
+
     def test_check_mkdocs_paths(self, test_project: Path):
         detector = DriftDetector(test_project, modules=["test_pkg"])
         report = detector.check_all()

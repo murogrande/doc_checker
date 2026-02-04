@@ -58,6 +58,37 @@ def sample_notebook(tmp_docs: Path) -> Path:
 
 
 @pytest.fixture
+def sample_notebook_with_local_links(tmp_docs: Path) -> Path:
+    """Create sample Jupyter notebook with local links."""
+    import json
+
+    nb_file = tmp_docs / "notebook_local.ipynb"
+    notebook = {
+        "cells": [
+            {
+                "source": [
+                    "# Documentation\n",
+                    "See [DMRG docs](../advanced/algorithms.md#dmrg)\n",
+                ],
+            },
+            {
+                "source": [
+                    "Check [config](./config.yml) and [script](utils.py)\n",
+                ],
+            },
+            {
+                "source": [
+                    "# Mkdocs internal links\n",
+                    "See [page](../../advanced/algorithms/#anchor)\n",
+                ],
+            },
+        ],
+    }
+    nb_file.write_text(json.dumps(notebook))
+    return nb_file
+
+
+@pytest.fixture
 def sample_mkdocs_yml(tmp_path: Path, tmp_docs: Path) -> Path:
     """Create sample mkdocs.yml."""
     mkdocs_file = tmp_path / "mkdocs.yml"

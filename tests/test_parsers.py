@@ -44,6 +44,20 @@ class TestMarkdownParser:
         assert links[0].path == "../example.py"
         assert links[0].text == "example"
 
+    def test_find_local_links_notebook(
+        self, sample_notebook_with_local_links: Path, tmp_docs: Path
+    ):
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_local_links()
+
+        assert len(links) == 4
+        paths = {link.path for link in links}
+        assert "../advanced/algorithms.md#dmrg" in paths
+        assert "./config.yml" in paths
+        assert "utils.py" in paths
+        assert "../../advanced/algorithms/#anchor" in paths  # mkdocs internal link
+        assert all(link.file_path == sample_notebook_with_local_links for link in links)
+
     def test_empty_directory(self, tmp_path: Path):
         empty_docs = tmp_path / "empty_docs"
         empty_docs.mkdir()
