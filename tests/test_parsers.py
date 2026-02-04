@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from doc_checker.parsers import MarkdownParser, YamlParser
@@ -43,6 +44,20 @@ class TestMarkdownParser:
         assert len(links) == 1
         assert links[0].path == "../example.py"
         assert links[0].text == "example"
+
+    def test_find_local_links_notebook(
+        self, sample_notebook_with_local_links: Path, tmp_docs: Path
+    ):
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_local_links()
+
+        assert len(links) == 4
+        paths = {link.path for link in links}
+        assert "../advanced/algorithms.md#dmrg" in paths
+        assert "./config.yml" in paths
+        assert "utils.py" in paths
+        assert "../../advanced/algorithms/#anchor" in paths  # mkdocs internal link
+        assert all(link.file_path == sample_notebook_with_local_links for link in links)
 
     def test_empty_directory(self, tmp_path: Path):
         empty_docs = tmp_path / "empty_docs"
@@ -126,3 +141,90 @@ nav:
         assert "guides/start.md" in nav_files
         assert "guides/advanced/topic1.md" in nav_files
         assert broken == []
+
+
+class TestParserEdgeCases:
+    """Test parser error handling for malformed inputs."""
+
+    def test_malformed_notebook_json(self, tmp_docs: Path):
+        """Malformed notebook JSON returns empty list, no crash."""
+        nb_file = tmp_docs / "broken.ipynb"
+        nb_file.write_text("{invalid json content")
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+        local_links = parser.find_local_links()
+
+        # Should gracefully return empty, not crash
+        assert links == []
+        assert local_links == []
+
+    def test_notebook_missing_cells_key(self, tmp_docs: Path):
+        """Notebook without cells key returns empty list."""
+        nb_file = tmp_docs / "no_cells.ipynb"
+        nb_file.write_text('{"metadata": {}}')
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+        local_links = parser.find_local_links()
+
+        assert links == []
+        assert local_links == []
+
+    def test_notebook_empty_cells(self, tmp_docs: Path):
+        """Notebook with empty cells array returns empty list."""
+        nb_file = tmp_docs / "empty_cells.ipynb"
+        nb_file.write_text('{"cells": []}')
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+
+        assert links == []
+
+    def test_notebook_cell_source_as_string(self, tmp_docs: Path):
+        """Notebook with source as string (not list) still parses."""
+        nb_file = tmp_docs / "string_source.ipynb"
+        notebook = {"cells": [{"source": "[link](https://example.com)"}]}
+        nb_file.write_text(json.dumps(notebook))
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+
+        assert len(links) == 1
+        assert links[0].url == "https://example.com"
+
+    def test_markdown_file_read_error(self, tmp_docs: Path):
+        """Unreadable markdown file returns empty list."""
+        md_file = tmp_docs / "unreadable.md"
+        md_file.write_text("# Test")
+        md_file.chmod(0o000)  # Remove read permissions
+
+        try:
+            parser = MarkdownParser(tmp_docs)
+            refs = parser.find_mkdocstrings_refs()
+            # Should gracefully skip unreadable file
+            assert not any(r.file_path == md_file for r in refs)
+        finally:
+            md_file.chmod(0o644)  # Restore permissions for cleanup
+
+    def test_notebook_cell_missing_source(self, tmp_docs: Path):
+        """Notebook cell without source key handled gracefully."""
+        nb_file = tmp_docs / "no_source.ipynb"
+        notebook = {"cells": [{"cell_type": "code"}]}
+        nb_file.write_text(json.dumps(notebook))
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+
+        assert links == []
+
+    def test_single_colon_mkdocstrings_syntax(self, tmp_docs: Path):
+        """Single colon mkdocstrings syntax (:: module.Class) is parsed."""
+        md_file = tmp_docs / "single_colon.md"
+        md_file.write_text(":: my_module.MyClass\n")
+
+        parser = MarkdownParser(tmp_docs)
+        refs = parser.find_mkdocstrings_refs()
+
+        assert len(refs) == 1
+        assert refs[0].reference == "my_module.MyClass"

@@ -170,3 +170,138 @@ class TestLinkChecker:
         checker = LinkChecker()
         results = checker._check_sync([], False)
         assert results == []
+
+
+class TestCheckLinksPublicAPI:
+    """Test check_links() public API entry point."""
+
+    def test_check_links_uses_sync_fallback_when_no_aiohttp(
+        self, sample_links: list[ExternalLink]
+    ):
+        """check_links() falls back to sync when aiohttp unavailable."""
+        checker = LinkChecker()
+
+        with (
+            patch.object(checker, "_check_sync", return_value=[]) as mock_sync,
+            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+        ):
+            results = checker.check_links(sample_links[:1], verbose=False)
+
+            mock_sync.assert_called_once()
+            assert results == []
+
+    def test_check_links_uses_async_when_aiohttp_available(
+        self, sample_links: list[ExternalLink]
+    ):
+        """check_links() uses async path when aiohttp is available."""
+        if not AIOHTTP_AVAILABLE:
+            pytest.skip("aiohttp not available")
+
+        checker = LinkChecker()
+
+        with patch.object(
+            checker, "_check_async", new_callable=AsyncMock, return_value=[]
+        ) as mock_async:
+            results = checker.check_links(sample_links[:1], verbose=False)
+
+            mock_async.assert_called_once()
+            assert results == []
+
+    def test_check_links_empty_list(self):
+        """check_links() with empty list returns empty results."""
+        checker = LinkChecker()
+        results = checker.check_links([], verbose=False)
+        assert results == []
+
+    def test_check_links_skips_domains(self, sample_links: list[ExternalLink]):
+        """check_links() skips URLs in SKIP_DOMAINS."""
+        checker = LinkChecker()
+        skip_link = ExternalLink(
+            url="https://pasqalworkspace.slack.com/channel",
+            text="Slack",
+            file_path=Path("test.md"),
+            line_number=1,
+        )
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_response = MagicMock()
+            mock_response.getcode.return_value = 200
+            mock_urlopen.return_value.__enter__.return_value = mock_response
+
+            with patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False):
+                results = checker.check_links([skip_link], verbose=False)
+
+            # Slack URL should be skipped, no request made
+            assert len(results) == 0
+            mock_urlopen.assert_not_called()
+
+    def test_check_links_handles_timeout(self, sample_links: list[ExternalLink]):
+        """check_links() handles timeout errors gracefully."""
+        import urllib.error
+
+        checker = LinkChecker()
+
+        with (
+            patch("urllib.request.urlopen") as mock_urlopen,
+            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+        ):
+            mock_urlopen.side_effect = urllib.error.URLError("timed out")
+            results = checker.check_links(sample_links[:1], verbose=False)
+
+            assert len(results) == 1
+            assert results[0].is_broken is True
+            assert "timed out" in str(results[0].error)
+
+    def test_check_links_handles_connection_error(self, sample_links: list[ExternalLink]):
+        """check_links() handles connection errors gracefully."""
+        import urllib.error
+
+        checker = LinkChecker()
+
+        with (
+            patch("urllib.request.urlopen") as mock_urlopen,
+            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+        ):
+            mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
+            results = checker.check_links(sample_links[:1], verbose=False)
+
+            assert len(results) == 1
+            assert results[0].is_broken is True
+            assert results[0].error is not None
+
+    def test_check_links_acceptable_status_403(self, sample_links: list[ExternalLink]):
+        """check_links() treats 403 as acceptable (not broken)."""
+        import urllib.error
+
+        checker = LinkChecker()
+
+        with (
+            patch("urllib.request.urlopen") as mock_urlopen,
+            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+        ):
+            mock_urlopen.side_effect = urllib.error.HTTPError(
+                sample_links[0].url, 403, "Forbidden", {}, None
+            )
+            results = checker.check_links(sample_links[:1], verbose=False)
+
+            assert len(results) == 1
+            assert results[0].is_broken is False
+            assert results[0].status_code == 403
+
+    def test_check_links_deduplicates(self, sample_links: list[ExternalLink]):
+        """check_links() deduplicates URLs before checking."""
+        checker = LinkChecker()
+
+        with (
+            patch("urllib.request.urlopen") as mock_urlopen,
+            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+        ):
+            mock_response = MagicMock()
+            mock_response.getcode.return_value = 200
+            mock_urlopen.return_value.__enter__.return_value = mock_response
+
+            # sample_links has 3 items, 2 unique URLs
+            results = checker.check_links(sample_links, verbose=False)
+
+            assert len(results) == 2
+            assert mock_urlopen.call_count == 2

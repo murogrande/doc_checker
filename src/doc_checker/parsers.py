@@ -28,11 +28,13 @@ class MarkdownParser:
     MARKDOWN_LINK_PATTERN = re.compile(
         r"\[([^\]]*)\]\((https?://[^)]+)\)"
     )  # identiy [Documentation](http://example.org/docs)
+    # Local link pattern components (combined below)
+    _FILE_EXTENSIONS = r"\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml"
+    _PATH_WITH_EXT = rf"[^)]+?(?:{_FILE_EXTENSIONS})(?:#[^)]*)?"
+    _RELATIVE_PATH = r"\.\.?/[^)]+"  # ./ or ../ without extension (mkdocs internal)
     LOCAL_LINK_PATTERN = re.compile(
-        r"\[([^\]]*)\]\(([^)]+?(?:\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml)(?:#[^)]*)?)\)"
-    )  # identifies [source code](../src/utils.py) and [config](./config.yml)
-    # and [notebook](docs/example.ipynb) and [docs](README.md)
-    # also matches anchors: [section](config.md#precision)
+        rf"\[([^\]]*)\]\(({_PATH_WITH_EXT}|{_RELATIVE_PATH})\)"
+    )
     BARE_URL_PATTERN = re.compile(
         r"(?<![(\[])(https?://[^\s\)>\]\"']+)"
     )  # identify check https://example.com for more info
@@ -80,7 +82,7 @@ class MarkdownParser:
         return links
 
     def find_local_links(self) -> list[LocalLink]:
-        """Find all local file links in markdown files.
+        """Find all local file links in markdown files and notebooks.
 
         Detects markdown links pointing to local files with extensions:
         .py, .ipynb, .md, .txt, .yml, .yaml, .json, .toml
@@ -91,6 +93,8 @@ class MarkdownParser:
         links: list[LocalLink] = []
         for md_file in self.docs_path.rglob("*.md"):
             links.extend(self._parse_local_links_in_file(md_file))
+        for ipynb_file in self.docs_path.rglob("*.ipynb"):
+            links.extend(self._parse_local_links_in_notebook(ipynb_file))
         return links
 
     def _parse_refs_in_file(self, file_path: Path) -> list[DocReference]:
@@ -202,6 +206,43 @@ class MarkdownParser:
                                 text="",
                                 file_path=file_path,
                                 line_number=line_num,
+                            )
+                        )
+        except Exception as e:
+            print(f"Warning: Could not read notebook {file_path}: {e}")
+        return links
+
+    def _parse_local_links_in_notebook(self, file_path: Path) -> list[LocalLink]:
+        """Parse local file links in a Jupyter notebook.
+
+        Iterates through notebook cells, extracting local links from cell source.
+        Line number corresponds to cell index (1-based).
+
+        Args:
+            file_path: Path to the .ipynb file.
+
+        Returns:
+            List of LocalLink objects found in notebook. Empty list on
+                read/parse error.
+        """
+        links: list[LocalLink] = []
+        try:
+            notebook = json.loads(file_path.read_text())
+            for cell_idx, cell in enumerate(notebook.get("cells", [])):
+                source = cell.get("source", [])
+                if isinstance(source, list):
+                    source = "".join(source)
+                cell_num = cell_idx + 1
+
+                for match in self.LOCAL_LINK_PATTERN.finditer(source):
+                    text, path = match.groups()
+                    if not path.startswith(("http://", "https://")):
+                        links.append(
+                            LocalLink(
+                                path=path,
+                                text=text,
+                                file_path=file_path,
+                                line_number=cell_num,
                             )
                         )
         except Exception as e:

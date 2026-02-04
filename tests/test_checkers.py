@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -148,6 +149,105 @@ class TestDriftDetector:
         assert not any(
             "../script.py" in link["path"] for link in report.broken_local_links
         )
+
+    def test_check_local_links_mkdocs_url_style(self, test_project: Path):
+        """Test mkdocs URL-style resolution for notebook internal links."""
+        # Create structure: docs/pkg/notebooks/tutorial.ipynb
+        # with link ../../advanced/guide/ -> docs/pkg/advanced/guide.md
+        notebooks = test_project / "docs" / "pkg" / "notebooks"
+        notebooks.mkdir(parents=True)
+        advanced = test_project / "docs" / "pkg" / "advanced"
+        advanced.mkdir(parents=True)
+
+        # Create notebook with mkdocs-style internal link
+        nb = {"cells": [{"source": ["See [guide](../../advanced/guide/#section)\n"]}]}
+        (notebooks / "tutorial.ipynb").write_text(json.dumps(nb))
+
+        # Create target file (mkdocs resolves guide/ to guide.md)
+        (advanced / "guide.md").write_text("# Guide")
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should resolve via mkdocs URL-style (not file-style)
+        assert not any("guide" in link["path"] for link in report.broken_local_links)
+
+    def test_check_local_links_notebook_without_extension(self, test_project: Path):
+        """Test notebook link to notebook without .ipynb extension."""
+        # Create structure: docs/pkg_a/notebooks/source.ipynb
+        # with link ../../../pkg_b/notebooks/target -> docs/pkg_b/notebooks/target.ipynb
+        pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
+        pkg_a.mkdir(parents=True)
+        pkg_b = test_project / "docs" / "pkg_b" / "notebooks"
+        pkg_b.mkdir(parents=True)
+
+        # Create notebook with link to another notebook without extension
+        nb = {"cells": [{"source": ["See [other](../../../pkg_b/notebooks/target)\n"]}]}
+        (pkg_a / "source.ipynb").write_text(json.dumps(nb))
+
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Target"]}]}
+        (pkg_b / "target.ipynb").write_text(json.dumps(target_nb))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should resolve to .ipynb file (notebooks can omit extension)
+        assert not any("target" in link["path"] for link in report.broken_local_links)
+
+    def test_check_local_links_notebook_with_extension_broken(self, test_project: Path):
+        """Test notebook link WITH .ipynb extension is flagged as broken."""
+        # mkdocs-jupyter uses URL-style routing, so explicit .ipynb breaks
+        pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
+        pkg_a.mkdir(parents=True)
+        pkg_b = test_project / "docs" / "pkg_b" / "notebooks"
+        pkg_b.mkdir(parents=True)
+
+        # Create notebook with link INCLUDING .ipynb extension (wrong for notebooks)
+        nb = {
+            "cells": [
+                {"source": ["See [other](../../../pkg_b/notebooks/target.ipynb)\n"]}
+            ]
+        }
+        (pkg_a / "source.ipynb").write_text(json.dumps(nb))
+
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Target"]}]}
+        (pkg_b / "target.ipynb").write_text(json.dumps(target_nb))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should be flagged - notebooks must omit .ipynb extension
+        broken = [x for x in report.broken_local_links if "target.ipynb" in x["path"]]
+        assert len(broken) == 1
+        assert "omit .ipynb" in broken[0].get("reason", "")
+
+    def test_check_local_links_md_to_notebook_requires_extension(
+        self, test_project: Path
+    ):
+        """Test markdown link to notebook MUST have .ipynb extension."""
+        # Create structure: docs/benchmarks/perf.md
+        # with link ../notebooks/tutorial (no extension) -> should be broken
+        benchmarks = test_project / "docs" / "benchmarks"
+        benchmarks.mkdir(parents=True)
+        notebooks = test_project / "docs" / "notebooks"
+        notebooks.mkdir(parents=True)
+
+        # Create markdown with link to notebook WITHOUT extension
+        (benchmarks / "perf.md").write_text(
+            "See [tutorial](../notebooks/tutorial) for details.\n"
+        )
+
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Tutorial"]}]}
+        (notebooks / "tutorial.ipynb").write_text(json.dumps(target_nb))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should be broken - markdown files must include .ipynb extension
+        assert any("tutorial" in link["path"] for link in report.broken_local_links)
 
     def test_check_mkdocs_paths(self, test_project: Path):
         detector = DriftDetector(test_project, modules=["test_pkg"])

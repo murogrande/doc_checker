@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -40,8 +41,6 @@ Local link: [example](../example.py)
 @pytest.fixture
 def sample_notebook(tmp_docs: Path) -> Path:
     """Create sample Jupyter notebook."""
-    import json
-
     nb_file = tmp_docs / "sample.ipynb"
     notebook = {
         "cells": [
@@ -51,6 +50,35 @@ def sample_notebook(tmp_docs: Path) -> Path:
                     "[Link](https://example.com)\n",
                 ],
             }
+        ],
+    }
+    nb_file.write_text(json.dumps(notebook))
+    return nb_file
+
+
+@pytest.fixture
+def sample_notebook_with_local_links(tmp_docs: Path) -> Path:
+    """Create sample Jupyter notebook with local links."""
+    nb_file = tmp_docs / "notebook_local.ipynb"
+    notebook = {
+        "cells": [
+            {
+                "source": [
+                    "# Documentation\n",
+                    "See [DMRG docs](../advanced/algorithms.md#dmrg)\n",
+                ],
+            },
+            {
+                "source": [
+                    "Check [config](./config.yml) and [script](utils.py)\n",
+                ],
+            },
+            {
+                "source": [
+                    "# Mkdocs internal links\n",
+                    "See [page](../../advanced/algorithms/#anchor)\n",
+                ],
+            },
         ],
     }
     nb_file.write_text(json.dumps(notebook))

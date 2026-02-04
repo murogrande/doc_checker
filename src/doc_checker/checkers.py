@@ -275,6 +275,8 @@ class DriftDetector:
 
         Resolves relative, ``..``-prefixed, and absolute paths.
         Also checks that linked ``.py`` files appear in mkdocs nav.
+        Enforces mkdocs-jupyter rules: from ``.ipynb`` sources, notebook
+        links must omit ``.ipynb`` extension (URL-style routing).
         Broken links are added to ``report.broken_local_links``.
         """
         links = self.md_parser.find_local_links()
@@ -282,7 +284,7 @@ class DriftDetector:
 
         for link in links:
             link_dir = link.file_path.parent
-            file_path = link.path.split("#")[0]
+            file_path = link.path.split("#")[0].rstrip("/")
             resolved = (link_dir / file_path).resolve()
 
             # Try other resolution strategies
@@ -290,6 +292,23 @@ class DriftDetector:
                 resolved = (self.root_path / "docs" / file_path).resolve()
             if not resolved.exists() and file_path.startswith("/"):
                 resolved = (self.root_path / file_path.lstrip("/")).resolve()
+
+            # mkdocs URL-style resolution: mkdocs serves page.md at /page/ URL,
+            # so relative links resolve from /page/, not /. We simulate this by
+            # treating the source file's stem as an extra directory level.
+            if not resolved.exists() and file_path.startswith(".."):
+                virtual_dir = link_dir / link.file_path.stem
+                resolved = (virtual_dir / file_path).resolve()
+                # Extensionless links: from .md only resolve to .md,
+                # from .ipynb can resolve to .md or .ipynb (mkdocs-jupyter)
+                if not resolved.exists() and not resolved.suffix:
+                    is_notebook_source = link.file_path.suffix == ".ipynb"
+                    extensions = (".md", ".ipynb") if is_notebook_source else (".md",)
+                    for ext in extensions:
+                        resolved_with_ext = resolved.with_suffix(ext)
+                        if resolved_with_ext.exists():
+                            resolved = resolved_with_ext
+                            break
 
             if not resolved.exists():
                 report.broken_local_links.append(
@@ -300,6 +319,18 @@ class DriftDetector:
                     }
                 )
             else:
+                # mkdocs-jupyter: notebooks use URL-style routing, so .ipynb
+                # extension in links from notebooks will break (404)
+                is_notebook_source = link.file_path.suffix == ".ipynb"
+                if is_notebook_source and file_path.endswith(".ipynb"):
+                    report.broken_local_links.append(
+                        {
+                            "path": link.path,
+                            "location": f"{link.file_path}:{link.line_number}",
+                            "text": link.text,
+                            "reason": "notebook links should omit .ipynb extension",
+                        }
+                    )
                 # Check .py files are in nav
                 if file_path.endswith(".py") and nav_files is not None:
                     try:

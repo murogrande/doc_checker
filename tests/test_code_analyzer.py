@@ -269,3 +269,55 @@ def _private_func():
         names = {api.name for api in apis}
         assert "public_func" in names
         assert "_private_func" not in names
+
+    def test_module_with_syntax_error(self, tmp_path: Path):
+        """Module with syntax error returns empty list, no crash."""
+        module_dir = tmp_path / "syntax_err_mod"
+        module_dir.mkdir()
+        (module_dir / "__init__.py").write_text("def broken(:\n    pass\n")
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis = analyzer.get_public_apis("syntax_err_mod")
+            assert apis == []
+        finally:
+            sys.modules.pop("syntax_err_mod", None)
+
+    def test_module_with_import_error(self, tmp_path: Path):
+        """Module with missing dependency returns empty list, no crash."""
+        module_dir = tmp_path / "import_err_mod"
+        module_dir.mkdir()
+        (module_dir / "__init__.py").write_text(
+            "import nonexistent_package_xyz_123\n"
+            '__all__ = ["Foo"]\n'
+            "class Foo: pass\n"
+        )
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis = analyzer.get_public_apis("import_err_mod")
+            assert apis == []
+        finally:
+            sys.modules.pop("import_err_mod", None)
+
+    def test_get_all_public_apis_submodule_import_error(self, tmp_path: Path):
+        """Submodule import error doesn't crash, parent still works."""
+        pkg = tmp_path / "partial_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text('__all__ = ["Top"]\nclass Top: pass\n')
+        bad_sub = pkg / "bad_sub"
+        bad_sub.mkdir()
+        (bad_sub / "__init__.py").write_text("import nonexistent_dep\n")
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            analyzer = CodeAnalyzer(tmp_path)
+            apis, _ = analyzer.get_all_public_apis("partial_pkg")
+            names = {api.name for api in apis}
+            # Top-level should still be discovered
+            assert "Top" in names
+        finally:
+            sys.modules.pop("partial_pkg", None)
+            sys.modules.pop("partial_pkg.bad_sub", None)
