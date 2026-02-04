@@ -173,38 +173,58 @@ class TestDriftDetector:
         # Link should resolve via mkdocs URL-style (not file-style)
         assert not any("guide" in link["path"] for link in report.broken_local_links)
 
-    def test_check_local_links_mkdocs_url_style_ipynb(self, test_project: Path):
-        """Test mkdocs URL-style resolution for notebook-to-notebook links."""
+    def test_check_local_links_notebook_without_extension(self, test_project: Path):
+        """Test notebook link to notebook without .ipynb extension."""
         import json
 
-        # Create structure: docs/emu_sv/notebooks/getting_started.ipynb
-        # with link ../../../emu_mps/notebooks/getting_started -> .ipynb target
-        sv_notebooks = test_project / "docs" / "emu_sv" / "notebooks"
-        sv_notebooks.mkdir(parents=True)
-        mps_notebooks = test_project / "docs" / "emu_mps" / "notebooks"
-        mps_notebooks.mkdir(parents=True)
+        # Create structure: docs/pkg_a/notebooks/source.ipynb
+        # with link ../../../pkg_b/notebooks/target -> docs/pkg_b/notebooks/target.ipynb
+        pkg_a = test_project / "docs" / "pkg_a" / "notebooks"
+        pkg_a.mkdir(parents=True)
+        pkg_b = test_project / "docs" / "pkg_b" / "notebooks"
+        pkg_b.mkdir(parents=True)
 
-        # Source notebook with mkdocs internal link (no extension)
-        nb = {
-            "cells": [
-                {
-                    "source": [
-                        "See the [emu-mps tutorial]"
-                        "(../../../emu_mps/notebooks/getting_started)\n"
-                    ]
-                }
-            ]
-        }
-        (sv_notebooks / "getting_started.ipynb").write_text(json.dumps(nb))
+        # Create notebook with link to another notebook without extension
+        nb = {"cells": [{"source": ["See [other](../../../pkg_b/notebooks/target)\n"]}]}
+        (pkg_a / "source.ipynb").write_text(json.dumps(nb))
 
-        # Target notebook
-        (mps_notebooks / "getting_started.ipynb").write_text(json.dumps({"cells": []}))
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Target"]}]}
+        (pkg_b / "target.ipynb").write_text(json.dumps(target_nb))
 
         detector = DriftDetector(test_project, modules=["test_pkg"])
         report = detector.check_all()
 
-        # Link should resolve to .ipynb
-        assert not any("emu_mps" in link["path"] for link in report.broken_local_links)
+        # Link should resolve to .ipynb file (notebooks can omit extension)
+        assert not any("target" in link["path"] for link in report.broken_local_links)
+
+    def test_check_local_links_md_to_notebook_requires_extension(
+        self, test_project: Path
+    ):
+        """Test markdown link to notebook MUST have .ipynb extension."""
+        import json
+
+        # Create structure: docs/benchmarks/perf.md
+        # with link ../notebooks/tutorial (no extension) -> should be broken
+        benchmarks = test_project / "docs" / "benchmarks"
+        benchmarks.mkdir(parents=True)
+        notebooks = test_project / "docs" / "notebooks"
+        notebooks.mkdir(parents=True)
+
+        # Create markdown with link to notebook WITHOUT extension
+        (benchmarks / "perf.md").write_text(
+            "See [tutorial](../notebooks/tutorial) for details.\n"
+        )
+
+        # Create target notebook
+        target_nb = {"cells": [{"source": ["# Tutorial"]}]}
+        (notebooks / "tutorial.ipynb").write_text(json.dumps(target_nb))
+
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        report = detector.check_all()
+
+        # Link should be broken - markdown files must include .ipynb extension
+        assert any("tutorial" in link["path"] for link in report.broken_local_links)
 
     def test_check_mkdocs_paths(self, test_project: Path):
         detector = DriftDetector(test_project, modules=["test_pkg"])

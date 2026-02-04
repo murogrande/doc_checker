@@ -62,15 +62,15 @@ CLI (cli.py) → DriftDetector (checkers.py) → {parsers, code_analyzer, link_c
 - OpenAI backend needs `OPENAI_API_KEY` env var
 - LLM defaults: qwen2.5:3b (ollama), gpt-4o-mini (openai)
 - Docstring local links resolve relative to the md file containing the `:::` directive (matching mkdocstrings rendering); short-name lookup handles re-exported APIs (e.g. `:::` has `pkg.sub.Cls` but API discovered as `pkg.Cls`)
-- mkdocs internal links without extension (e.g. `../path/to/page`) resolve to both `.md` and `.ipynb` files
+- mkdocs internal links without extension resolve to `.md` only; notebook links must include `.ipynb`
 
 ## Tests
 
-Tests use `tmp_path`-based fixtures in `conftest.py`: `tmp_docs`, `sample_markdown`, `sample_notebook`, `sample_mkdocs_yml`. Each creates a temporary project structure for isolated testing.
+Tests use `tmp_path`-based fixtures in `conftest.py`: `tmp_docs`, `sample_markdown`, `sample_notebook`, `sample_mkdocs_yml`. Each creates a temporary project structure for isolated testing. CI runs on Python 3.9-3.12 with and without `[async]` extras.
 
 ## Config
 
 - line-length: 90 (black/ruff)
-- mypy: strict (excludes tests/), ignores ollama/openai stubs
+- mypy: strict, excludes tests/, ignores ollama/openai stubs
 - Python >=3.9
-- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, black, ruff --fix, mypy
+- pre-commit: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, black, ruff --fix, mypy (excludes tests/)

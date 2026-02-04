@@ -297,12 +297,15 @@ class DriftDetector:
             if not resolved.exists() and file_path.startswith(".."):
                 virtual_dir = link_dir / link.file_path.stem
                 resolved = (virtual_dir / file_path).resolve()
-                # mkdocs links without extension resolve to .md or .ipynb files
+                # mkdocs links without extension: .md files only resolve to .md,
+                # but notebooks (via mkdocs-jupyter) can resolve to .md or .ipynb
                 if not resolved.exists() and not resolved.suffix:
-                    for ext in (".md", ".ipynb"):
-                        resolved_ext = resolved.with_suffix(ext)
-                        if resolved_ext.exists():
-                            resolved = resolved_ext
+                    is_notebook_source = link.file_path.suffix == ".ipynb"
+                    extensions = (".md", ".ipynb") if is_notebook_source else (".md",)
+                    for ext in extensions:
+                        resolved_with_ext = resolved.with_suffix(ext)
+                        if resolved_with_ext.exists():
+                            resolved = resolved_with_ext
                             break
 
             if not resolved.exists():
