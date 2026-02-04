@@ -291,14 +291,13 @@ class DriftDetector:
             if not resolved.exists() and file_path.startswith("/"):
                 resolved = (self.root_path / file_path.lstrip("/")).resolve()
 
-            # mkdocs URL-style resolution: treat source file as directory
-            # e.g. notebooks/file.ipynb -> notebooks/file/ in URL space
-            # so ../../path resolves relative to that virtual directory
+            # mkdocs URL-style resolution fallback: treat source file as directory
+            # e.g. page.md or notebook.ipynb -> page/ or notebook/ in URL space
             if not resolved.exists() and file_path.startswith(".."):
                 virtual_dir = link_dir / link.file_path.stem
                 resolved = (virtual_dir / file_path).resolve()
-                # mkdocs links without extension: .md files only resolve to .md,
-                # but notebooks (via mkdocs-jupyter) can resolve to .md or .ipynb
+                # Extensionless links: from .md only resolve to .md,
+                # from .ipynb can resolve to .md or .ipynb (mkdocs-jupyter)
                 if not resolved.exists() and not resolved.suffix:
                     is_notebook_source = link.file_path.suffix == ".ipynb"
                     extensions = (".md", ".ipynb") if is_notebook_source else (".md",)
