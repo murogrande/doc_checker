@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, cast
 
 from doc_checker.models import DocReference, ExternalLink, LocalLink
 
@@ -22,22 +22,15 @@ class MarkdownParser:
         docs_path: Root directory to scan for documentation files.
     """
 
-    MKDOCSTRINGS_PATTERN = re.compile(
-        r"^:::?\s+([\w.]+)", re.MULTILINE
-    )  # identify ::: mypackage.MyClass
-    MARKDOWN_LINK_PATTERN = re.compile(
-        r"\[([^\]]*)\]\((https?://[^)]+)\)"
-    )  # identiy [Documentation](http://example.org/docs)
-    # Local link pattern components (combined below)
+    # Regex patterns
+    MKDOCSTRINGS_PATTERN = re.compile(r"^:::?\s+([\w.]+)", re.MULTILINE)
+    MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\((https?://[^)]+)\)")
+    BARE_URL_PATTERN = re.compile(r"(?<![(\[])(https?://[^\s\)>\]\"']+)")
+
     _FILE_EXTENSIONS = r"\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml"
-    _PATH_WITH_EXT = rf"[^)]+?(?:{_FILE_EXTENSIONS})(?:#[^)]*)?"
-    _RELATIVE_PATH = r"\.\.?/[^)]+"  # ./ or ../ without extension (mkdocs internal)
     LOCAL_LINK_PATTERN = re.compile(
-        rf"\[([^\]]*)\]\(({_PATH_WITH_EXT}|{_RELATIVE_PATH})\)"
+        rf"\[([^\]]*)\]\(([^)]+?(?:{_FILE_EXTENSIONS})(?:#[^)]*)?|\.\.?/[^)]+)\)"
     )
-    BARE_URL_PATTERN = re.compile(
-        r"(?<![(\[])(https?://[^\s\)>\]\"']+)"
-    )  # identify check https://example.com for more info
 
     def __init__(self, docs_path: Path):
         """Initialize parser with docs directory path.
@@ -46,6 +39,14 @@ class MarkdownParser:
             docs_path: Root directory containing documentation files.
         """
         self.docs_path = docs_path
+        self._refs_cache: list[DocReference] | None = None
+        self._external_cache: list[ExternalLink] | None = None
+        self._local_cache: list[LocalLink] | None = None
+        self._scanned = False
+
+    # -------------------------------------------------------------------------
+    # Public methods
+    # -------------------------------------------------------------------------
 
     def find_mkdocstrings_refs(self) -> list[DocReference]:
         """Find all mkdocstrings references in markdown files.
@@ -56,10 +57,8 @@ class MarkdownParser:
         Returns:
             List of DocReference objects with reference string, file path, line number.
         """
-        refs: list[DocReference] = []
-        for md_file in self.docs_path.rglob("*.md"):
-            refs.extend(self._parse_refs_in_file(md_file))
-        return refs
+        self._ensure_scanned()
+        return self._refs_cache or []
 
     def find_external_links(self) -> list[ExternalLink]:
         """Find all external HTTP/HTTPS links in docs.
@@ -68,18 +67,13 @@ class MarkdownParser:
         - Markdown links: [text](https://example.com)
         - Bare URLs: https://example.com
 
-        Deduplicates URLs that appear both as markdown link and bare URL on same
-            line.
+        Deduplicates URLs that appear both as markdown link and bare URL on same line.
 
         Returns:
             List of ExternalLink objects with URL, text, file path, line number.
         """
-        links: list[ExternalLink] = []
-        for md_file in self.docs_path.rglob("*.md"):
-            links.extend(self._parse_external_links_in_file(md_file))
-        for ipynb_file in self.docs_path.rglob("*.ipynb"):
-            links.extend(self._parse_links_in_notebook(ipynb_file))
-        return links
+        self._ensure_scanned()
+        return self._external_cache or []
 
     def find_local_links(self) -> list[LocalLink]:
         """Find all local file links in markdown files and notebooks.
@@ -90,170 +84,10 @@ class MarkdownParser:
         Returns:
             List of LocalLink objects with path, text, file path, line number.
         """
-        links: list[LocalLink] = []
-        for md_file in self.docs_path.rglob("*.md"):
-            links.extend(self._parse_local_links_in_file(md_file))
-        for ipynb_file in self.docs_path.rglob("*.ipynb"):
-            links.extend(self._parse_local_links_in_notebook(ipynb_file))
-        return links
+        self._ensure_scanned()
+        return self._local_cache or []
 
-    def _parse_refs_in_file(self, file_path: Path) -> list[DocReference]:
-        """Parse mkdocstrings references in a single markdown file.
-
-        Args:
-            file_path: Path to the markdown file.
-
-        Returns:
-            List of DocReference objects found in file. Empty list on read error.
-        """
-        refs: list[DocReference] = []
-        try:
-            content = file_path.read_text()
-            for line_num, line in enumerate(content.split("\n"), 1):
-                match = self.MKDOCSTRINGS_PATTERN.match(line.strip())
-                if match:
-                    refs.append(
-                        DocReference(
-                            reference=match.group(1),
-                            file_path=file_path,
-                            line_number=line_num,
-                        )
-                    )
-        except Exception as e:
-            print(f"Warning: Could not read {file_path}: {e}")
-        return refs
-
-    def _parse_external_links_in_file(self, file_path: Path) -> list[ExternalLink]:
-        """Parse external HTTP links in a single markdown file.
-
-        Extracts both markdown-style links and bare URLs, deduplicating when
-        the same URL appears in both formats on the same line.
-
-        Args:
-            file_path: Path to the markdown file.
-
-        Returns:
-            List of ExternalLink objects found in file. Empty list on read error.
-        """
-        links: list[ExternalLink] = []
-        try:
-            content = file_path.read_text()
-            for line_num, line in enumerate(content.split("\n"), 1):
-                # Markdown links
-                for match in self.MARKDOWN_LINK_PATTERN.finditer(line):
-                    text, url = match.groups()
-                    links.append(
-                        ExternalLink(
-                            url=url, text=text, file_path=file_path, line_number=line_num
-                        )
-                    )
-                # Bare URLs
-                for match in self.BARE_URL_PATTERN.finditer(line):
-                    url = match.group(0)
-                    if not any(
-                        link.url == url and link.line_number == line_num for link in links
-                    ):
-                        links.append(
-                            ExternalLink(
-                                url=url,
-                                text="",
-                                file_path=file_path,
-                                line_number=line_num,
-                            )
-                        )
-        except Exception as e:
-            print(f"Warning: Could not read {file_path}: {e}")
-        return links
-
-    def _parse_links_in_notebook(self, file_path: Path) -> list[ExternalLink]:
-        """Parse external HTTP links in a Jupyter notebook.
-
-        Iterates through notebook cells, extracting links from cell source.
-        Line number corresponds to cell index (1-based).
-
-        Args:
-            file_path: Path to the .ipynb file.
-
-        Returns:
-            List of ExternalLink objects found in notebook. Empty list on
-                read/parse error.
-        """
-        links: list[ExternalLink] = []
-        try:
-            notebook = json.loads(file_path.read_text())
-            for cell_idx, cell in enumerate(notebook.get("cells", [])):
-                source = cell.get("source", [])
-                if isinstance(source, list):
-                    source = "".join(source)
-                line_num = cell_idx + 1
-
-                # Markdown + bare URLs
-                for match in self.MARKDOWN_LINK_PATTERN.finditer(source):
-                    text, url = match.groups()
-                    links.append(
-                        ExternalLink(
-                            url=url, text=text, file_path=file_path, line_number=line_num
-                        )
-                    )
-                for match in self.BARE_URL_PATTERN.finditer(source):
-                    url = match.group(0)
-                    if not any(
-                        link.url == url and link.line_number == line_num for link in links
-                    ):
-                        links.append(
-                            ExternalLink(
-                                url=url,
-                                text="",
-                                file_path=file_path,
-                                line_number=line_num,
-                            )
-                        )
-        except Exception as e:
-            print(f"Warning: Could not read notebook {file_path}: {e}")
-        return links
-
-    def _parse_local_links_in_notebook(self, file_path: Path) -> list[LocalLink]:
-        """Parse local file links in a Jupyter notebook.
-
-        Iterates through notebook cells, extracting local links from cell source.
-        Line number corresponds to cell index (1-based).
-
-        Args:
-            file_path: Path to the .ipynb file.
-
-        Returns:
-            List of LocalLink objects found in notebook. Empty list on
-                read/parse error.
-        """
-        links: list[LocalLink] = []
-        try:
-            notebook = json.loads(file_path.read_text())
-            for cell_idx, cell in enumerate(notebook.get("cells", [])):
-                source = cell.get("source", [])
-                if isinstance(source, list):
-                    source = "".join(source)
-                cell_num = cell_idx + 1
-
-                for match in self.LOCAL_LINK_PATTERN.finditer(source):
-                    text, path = match.groups()
-                    if not path.startswith(("http://", "https://")):
-                        links.append(
-                            LocalLink(
-                                path=path,
-                                text=text,
-                                file_path=file_path,
-                                line_number=cell_num,
-                            )
-                        )
-        except Exception as e:
-            print(f"Warning: Could not read notebook {file_path}: {e}")
-        return links
-
-    def parse_local_links_in_text(
-        self,
-        text: str,
-        source_path: Path,
-    ) -> list[LocalLink]:
+    def parse_local_links_in_text(self, text: str, source_path: Path) -> list[LocalLink]:
         """Parse local file links from arbitrary text (e.g. docstrings).
 
         Args:
@@ -278,35 +112,123 @@ class MarkdownParser:
                     )
         return links
 
-    def _parse_local_links_in_file(self, file_path: Path) -> list[LocalLink]:
-        """Parse local file links in a single markdown file.
+    # -------------------------------------------------------------------------
+    # Private helpers
+    # -------------------------------------------------------------------------
 
-        Filters out http:// and https:// URLs to only capture relative file paths.
+    def _ensure_scanned(self) -> None:
+        """Single pass through all docs, populating all caches."""
+        if self._scanned:
+            return
+        self._refs_cache = []
+        self._external_cache = []
+        self._local_cache = []
 
-        Args:
-            file_path: Path to the markdown file.
+        # Markdown files
+        for md_file in self.docs_path.rglob("*.md"):
+            content = self._read_file(md_file)
+            if content is None:
+                continue
+            self._extract_from_markdown(content, md_file)
 
-        Returns:
-            List of LocalLink objects found in file. Empty list on read error.
-        """
-        links: list[LocalLink] = []
-        try:
-            content = file_path.read_text()
-            for line_num, line in enumerate(content.split("\n"), 1):
-                for match in self.LOCAL_LINK_PATTERN.finditer(line):
+        # Notebooks
+        for nb_file in self.docs_path.rglob("*.ipynb"):
+            for cell_num, cell_text in self._iter_notebook_cells(nb_file):
+                self._extract_external_links_to_cache(cell_text, nb_file, cell_num)
+                for match in self.LOCAL_LINK_PATTERN.finditer(cell_text):
                     text, path = match.groups()
                     if not path.startswith(("http://", "https://")):
-                        links.append(
+                        self._local_cache.append(
                             LocalLink(
                                 path=path,
                                 text=text,
-                                file_path=file_path,
-                                line_number=line_num,
+                                file_path=nb_file,
+                                line_number=cell_num,
                             )
                         )
+
+        self._scanned = True
+
+    def _extract_from_markdown(self, content: str, md_file: Path) -> None:
+        """Extract refs, external links, local links from a single md file."""
+        for line_num, line in enumerate(content.split("\n"), 1):
+            # mkdocstrings refs
+            match = self.MKDOCSTRINGS_PATTERN.match(line.strip())
+            if match:
+                self._refs_cache.append(  # type: ignore[union-attr]
+                    DocReference(
+                        reference=match.group(1),
+                        file_path=md_file,
+                        line_number=line_num,
+                    )
+                )
+            # External links
+            self._extract_external_links_to_cache(line, md_file, line_num)
+            # Local links
+            for lmatch in self.LOCAL_LINK_PATTERN.finditer(line):
+                link_text, path = lmatch.groups()
+                if not path.startswith(("http://", "https://")):
+                    self._local_cache.append(  # type: ignore[union-attr]
+                        LocalLink(
+                            path=path,
+                            text=link_text,
+                            file_path=md_file,
+                            line_number=line_num,
+                        )
+                    )
+
+    def _extract_external_links_to_cache(
+        self, text: str, file_path: Path, line_num: int
+    ) -> None:
+        """Extract external links to cache (used during single-pass scan)."""
+        seen_urls: set[str] = set()
+        for match in self.MARKDOWN_LINK_PATTERN.finditer(text):
+            link_text, url = match.groups()
+            self._external_cache.append(  # type: ignore[union-attr]
+                ExternalLink(
+                    url=url, text=link_text, file_path=file_path, line_number=line_num
+                )
+            )
+            seen_urls.add(url)
+        for match in self.BARE_URL_PATTERN.finditer(text):
+            url = match.group(0)
+            if url not in seen_urls:
+                self._external_cache.append(  # type: ignore[union-attr]
+                    ExternalLink(
+                        url=url, text="", file_path=file_path, line_number=line_num
+                    )
+                )
+                seen_urls.add(url)
+
+    def _read_file(self, file_path: Path) -> str | None:
+        """Read file content, return None on error."""
+        try:
+            return file_path.read_text()
         except Exception as e:
             print(f"Warning: Could not read {file_path}: {e}")
-        return links
+            return None
+
+    def _iter_notebook_cells(self, file_path: Path) -> list[tuple[int, str]]:
+        """Yield (cell_number, cell_text) for each cell in notebook.
+
+        Args:
+            file_path: Path to .ipynb file.
+
+        Returns:
+            List of (1-based cell index, cell source text) tuples.
+        """
+        try:
+            notebook = json.loads(file_path.read_text())
+            result = []
+            for idx, cell in enumerate(notebook.get("cells", [])):
+                source = cell.get("source", [])
+                if isinstance(source, list):
+                    source = "".join(source)
+                result.append((idx + 1, source))
+            return result
+        except Exception as e:
+            print(f"Warning: Could not read notebook {file_path}: {e}")
+            return []
 
 
 class YamlParser:
@@ -336,21 +258,10 @@ class YamlParser:
         Returns:
             Set of file path strings from nav, or None if mkdocs.yml missing/no nav.
         """
-        if not self.mkdocs_path.exists():
+        nav = self._load_nav()
+        if nav is None:
             return None
-        try:
-            import yaml
-
-            config = yaml.safe_load(self.mkdocs_path.read_text())
-            if "nav" not in config:
-                return None
-
-            files: set[str] = set()
-            self._extract_files(config["nav"], files)
-            return files
-        except Exception as e:
-            print(f"Warning: Could not parse {self.mkdocs_path}: {e}")
-            return None
+        return set(self._collect_nav_paths(nav))
 
     def check_nav_paths(self) -> list[dict[str, str]]:
         """Validate all nav paths exist in docs directory.
@@ -359,62 +270,53 @@ class YamlParser:
             List of dicts with 'path' and 'location' keys for each broken path.
             Empty list if mkdocs.yml missing, no nav section, or all paths valid.
         """
-        if not self.mkdocs_path.exists():
+        nav = self._load_nav()
+        if nav is None:
             return []
+
+        broken = []
+        for path in self._collect_nav_paths(nav):
+            if not (self.docs_path / path).exists():
+                broken.append({"path": path, "location": "mkdocs.yml"})
+        return broken
+
+    def _load_nav(self) -> list[Any] | None:
+        """Load nav section from mkdocs.yml.
+
+        Returns:
+            Nav list if found, None if file missing/no nav/parse error.
+        """
+        if not self.mkdocs_path.exists():
+            return None
         try:
             import yaml
 
             config = yaml.safe_load(self.mkdocs_path.read_text())
-            if "nav" not in config:
-                return []
-
-            broken: list[dict[str, str]] = []
-            self._check_nav_item(config["nav"], broken)
-            return broken
+            return cast(Optional[list[Any]], config.get("nav"))
         except Exception as e:
-            print(f"Warning: Could not validate {self.mkdocs_path}: {e}")
-            return []
+            print(f"Warning: Could not parse {self.mkdocs_path}: {e}")
+            return None
 
-    def _extract_files(self, nav_item: Any, files: set[str]) -> None:
-        """Recursively extract file paths from nested nav structure.
+    def _collect_nav_paths(self, nav_item: Any) -> list[str]:
+        """Recursively collect all file paths from nav structure.
 
         Handles nav items as strings, dicts, or lists (mkdocs nav format).
 
         Args:
             nav_item: Nav element (str path, dict, or list of items).
-            files: Set to accumulate discovered file paths (mutated in place).
+
+        Returns:
+            List of file path strings found in nav_item.
         """
+        paths: list[str] = []
+
         if isinstance(nav_item, str):
-            files.add(nav_item)
+            paths.append(nav_item)
         elif isinstance(nav_item, dict):
             for value in nav_item.values():
-                if isinstance(value, str):
-                    files.add(value)
-                elif isinstance(value, list):
-                    for item in value:
-                        self._extract_files(item, files)
+                paths.extend(self._collect_nav_paths(value))
         elif isinstance(nav_item, list):
             for item in nav_item:
-                self._extract_files(item, files)
+                paths.extend(self._collect_nav_paths(item))
 
-    def _check_nav_item(self, nav_item: Any, broken: list[dict[str, str]]) -> None:
-        """Recursively validate nav paths exist in docs directory.
-
-        Args:
-            nav_item: Nav element (str path, dict, or list of items).
-            broken: List to accumulate broken paths (mutated in place).
-        """
-        if isinstance(nav_item, str):
-            if not (self.docs_path / nav_item).exists():
-                broken.append({"path": nav_item, "location": "mkdocs.yml"})
-        elif isinstance(nav_item, dict):
-            for value in nav_item.values():
-                if isinstance(value, str):
-                    if not (self.docs_path / value).exists():
-                        broken.append({"path": value, "location": "mkdocs.yml"})
-                elif isinstance(value, list):
-                    for item in value:
-                        self._check_nav_item(item, broken)
-        elif isinstance(nav_item, list):
-            for item in nav_item:
-                self._check_nav_item(item, broken)
+        return paths

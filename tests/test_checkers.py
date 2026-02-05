@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -649,3 +650,155 @@ class TestQualityChecks:
 
         assert report.has_issues() is True
         assert len(report.quality_issues) > 0
+
+
+class TestHelperMethods:
+    """Tests for refactored helper methods in DriftDetector."""
+
+    def test_is_api_documented_by_short_name(self, test_project: Path):
+        """Test _is_api_documented finds API by short name."""
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        api = MagicMock(name="TestClass", module="test_pkg")
+        api.name = "TestClass"
+
+        documented = {"test_pkg.TestClass"}
+        documented_names = {"test_pkg": {"TestClass", "test_pkg.TestClass"}}
+
+        assert detector._is_api_documented(api, documented, documented_names) is True
+
+    def test_is_api_documented_by_full_path(self, test_project: Path):
+        """Test _is_api_documented finds API by full module.name path."""
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        api = MagicMock(name="Helper", module="test_pkg.sub")
+        api.name = "Helper"
+
+        documented = {"test_pkg.sub.Helper"}
+        documented_names = {"test_pkg": set()}
+
+        assert detector._is_api_documented(api, documented, documented_names) is True
+
+    def test_is_api_documented_by_suffix(self, test_project: Path):
+        """Test _is_api_documented finds API by ref ending with .name."""
+        detector = DriftDetector(test_project, modules=["pkg"])
+        api = MagicMock(name="Widget", module="pkg")
+        api.name = "Widget"
+
+        # Reference ends with .Widget but isn't exact match
+        documented = {"some.other.path.Widget"}
+        documented_names = {"pkg": set()}
+
+        assert detector._is_api_documented(api, documented, documented_names) is True
+
+    def test_is_api_documented_not_found(self, test_project: Path):
+        """Test _is_api_documented returns False when not documented."""
+        detector = DriftDetector(test_project, modules=["test_pkg"])
+        api = MagicMock(name="Missing", module="test_pkg")
+        api.name = "Missing"
+
+        documented = {"test_pkg.Other"}
+        documented_names = {"test_pkg": {"Other"}}
+
+        assert detector._is_api_documented(api, documented, documented_names) is False
+
+    def test_resolve_path_direct_relative(self, tmp_path: Path):
+        """Test _resolve_path finds direct relative paths."""
+        # Setup: docs/page.md links to docs/other.md
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "page.md").write_text("# Page")
+        (docs / "other.md").write_text("# Other")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: page.md\n")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        result = detector._resolve_path(docs, "other.md", ".md")
+
+        assert result is not None
+        assert result.name == "other.md"
+
+    def test_resolve_path_dotdot_from_docs(self, tmp_path: Path):
+        """Test _resolve_path resolves ../ from docs root."""
+        docs = tmp_path / "docs"
+        sub = docs / "sub"
+        sub.mkdir(parents=True)
+        (docs / "index.md").write_text("# Index")
+        (sub / "page.md").write_text("# Page")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        # From sub/, link to ../index.md
+        result = detector._resolve_path(sub, "../index.md", ".md")
+
+        assert result is not None
+        assert result.name == "index.md"
+
+    def test_resolve_path_absolute(self, tmp_path: Path):
+        """Test _resolve_path resolves absolute paths from project root."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        script = tmp_path / "script.py"
+        script.write_text("# Script")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        (docs / "index.md").write_text("# Index")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        result = detector._resolve_path(docs, "/script.py", ".md")
+
+        assert result is not None
+        assert result.name == "script.py"
+
+    def test_resolve_path_not_found(self, tmp_path: Path):
+        """Test _resolve_path returns None for missing files."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+        (docs / "index.md").write_text("# Index")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        result = detector._resolve_path(docs, "missing.md", ".md")
+
+        assert result is None
+
+    def test_resolve_ds_link_relative(self, tmp_path: Path):
+        """Test _resolve_ds_link finds relative paths."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "guide.md").write_text("# Guide")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        result = detector._resolve_ds_link("guide.md", docs, docs)
+
+        assert result is not None
+        assert result.name == "guide.md"
+
+    def test_resolve_ds_link_dotdot(self, tmp_path: Path):
+        """Test _resolve_ds_link resolves ../ from docs root."""
+        docs = tmp_path / "docs"
+        sub = docs / "api"
+        sub.mkdir(parents=True)
+        (docs / "guide.md").write_text("# Guide")
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: guide.md\n")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        # Link from api/ to ../guide.md
+        result = detector._resolve_ds_link("../guide.md", sub, docs)
+
+        assert result is not None
+        assert result.name == "guide.md"
+
+    def test_resolve_ds_link_not_found(self, tmp_path: Path):
+        """Test _resolve_ds_link returns None for missing files."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
+
+        detector = DriftDetector(tmp_path, modules=[])
+        result = detector._resolve_ds_link("missing.md", docs, docs)
+
+        assert result is None
+
+    def test_ignore_params_class_constant(self, test_project: Path):
+        """Test IGNORE_PARAMS is accessible as class constant."""
+        assert "cls" in DriftDetector.IGNORE_PARAMS
+        assert "value" in DriftDetector.IGNORE_PARAMS
+        assert "self" not in DriftDetector.IGNORE_PARAMS  # self not in list

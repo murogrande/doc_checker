@@ -4,7 +4,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+
+class _BrokenLinkRequired(TypedDict):
+    """Required keys for BrokenLinkInfo."""
+
+    path: str
+    location: str
+    text: str
+
+
+class BrokenLinkInfo(_BrokenLinkRequired, total=False):
+    """Broken local link information.
+
+    Used by ``_check_local_links`` to report broken file references.
+
+    Required keys:
+        path: The link path as written in source (e.g., "../missing.md").
+        location: Source location as "file:line" (e.g., "docs/api.md:42").
+        text: The link text/label.
+
+    Optional keys:
+        reason: Why the link is broken (e.g., "notebook links should omit .ipynb").
+    """
+
+    reason: str
 
 
 @dataclass
@@ -164,7 +189,7 @@ class DriftReport:
     signature_mismatches: list[dict[str, Any]] = field(default_factory=list)
     broken_references: list[str] = field(default_factory=list)
     broken_external_links: list[dict[str, Any]] = field(default_factory=list)
-    broken_local_links: list[dict[str, Any]] = field(default_factory=list)
+    broken_local_links: list[BrokenLinkInfo] = field(default_factory=list)
     broken_mkdocs_paths: list[dict[str, Any]] = field(default_factory=list)
     undocumented_params: list[dict[str, Any]] = field(default_factory=list)
     quality_issues: list[QualityIssue] = field(default_factory=list)

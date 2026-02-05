@@ -1,21 +1,31 @@
 # doc_checker
 
-Check documentation drift: broken links, undocumented APIs, invalid references
+Check documentation drift: broken links, undocumented APIs, invalid references.
+
+**Requires:** mkdocs project with `mkdocs.yml` containing a `nav:` section and `docs/` directory. Works with [mkdocstrings](https://mkdocstrings.github.io/) `::: module.Class` syntax for API documentation.
 
 ## Features
 
-- **API Coverage**: Ensure all public APIs documented (recursive submodule discovery)
-- **Reference Validation**: Check mkdocstrings references point to valid code
+- **API Coverage**: Ensure all public APIs have mkdocstrings references (recursive submodule discovery)
+- **Reference Validation**: Check `::: module.Class` references resolve to valid Python objects
 - **Link Checking**: Verify external HTTP links (async)
-- **Local Links**: Validate file paths in markdown/notebooks and Python docstrings (resolves relative to mkdocstrings page)
-- **Parameter Docs**: Check function parameters documented
+- **Local Links**: Validate file paths in markdown/notebooks and Python docstrings
+- **Parameter Docs**: Check function parameters mentioned in docstrings
 - **mkdocs.yml Validation**: Verify nav paths exist
 - **LLM Quality Checks**: Evaluate docstring quality (english, code-alignment, completeness)
 
 ## Installation
 
 ```bash
+# From GitHub
+pip install git+https://github.com/murogrande/doc_checker.git
+
+# Or clone and install
+git clone https://github.com/murogrande/doc_checker.git
+cd doc_checker
 pip install -e .
+
+# Optional extras
 pip install -e ".[async]"         # async link checking (recommended)
 pip install -e ".[llm]"           # LLM quality checks (ollama)
 pip install -e ".[llm-openai]"    # LLM quality checks (openai)
@@ -26,30 +36,33 @@ pip install -e ".[dev]"           # all dev dependencies
 
 ```bash
 # All checks (basic + external links + LLM quality)
-doc-checker --root /path/to/project
+doc-checker --modules my_package --root /path/to/project
 
 # Basic checks only (API coverage, references, params, local links, mkdocs)
-doc-checker --check-basic --root /path/to/project
+doc-checker --modules my_package --check-basic --root /path/to/project
 
 # External HTTP link validation only (slow)
-doc-checker --check-external-links --root /path/to/project
+doc-checker --modules my_package --check-external-links --root /path/to/project
 
 # LLM quality checks
-doc-checker --check-quality --root /path/to/project                    # ollama (default)
-doc-checker --check-quality --llm-backend openai --root /path/to/project  # openai
-doc-checker --check-quality --quality-sample 0.1 --root /path/to/project  # 10% sample
+doc-checker --modules my_package --check-quality --root /path/to/project
+doc-checker --modules my_package --check-quality --llm-backend openai --root .
+doc-checker --modules my_package --check-quality --quality-sample 0.1 --root .
 
-# Custom modules + JSON output
-doc-checker --modules my_module --json --root /path/to/project
+# Multiple modules
+doc-checker --modules my_package --modules other_pkg --root /path/to/project
 
-# Skip specific submodules (fully qualified paths, warns if unmatched)
-doc-checker --ignore-submodules emu_mps.optimatrix --root /path/to/project
+# Skip specific submodules (fully qualified paths)
+doc-checker --modules my_package --ignore-submodules my_package.internal --root .
+
+# JSON output
+doc-checker --modules my_package --json --root /path/to/project
 
 # Non-blocking (report issues but exit 0)
-doc-checker --check-basic --warn-only --root /path/to/project
+doc-checker --modules my_package --check-basic --warn-only --root /path/to/project
 
-# Combine flags
-doc-checker --check-basic --check-external-links -v --root /path/to/project
+# Verbose
+doc-checker --modules my_package --check-basic -v --root /path/to/project
 ```
 
 ## Pre-commit Hook
@@ -60,54 +73,38 @@ Add to your `.pre-commit-config.yaml`:
 - repo: https://github.com/murogrande/doc_checker
   rev: main  # use a tag for stable usage
   hooks:
+    # Basic checks: API coverage, broken refs, params, local links, mkdocs nav
     - id: doc-checker-basic
-      args: ["--ignore-submodules", "emu_mps.optimatrix"]
+      args: ["--modules", "my_package"]
+
+    # External link validation (slower, runs async HTTP requests)
     - id: doc-checker-links
+      args: ["--modules", "my_package"]
       verbose: true
 ```
 
-Hooks use `language: system`, so `doc-checker` must be installed in your environment:
-
-```bash
-# Install directly from GitHub (no clone needed)
-pip install git+https://github.com/murogrande/doc_checker.git
-
-# Or clone and install locally
-git clone https://github.com/murogrande/doc_checker.git
-pip install -e ./doc_checker
-```
-
-You can also add it as a dev dependency in your `pyproject.toml`:
-
-```toml
-[project.optional-dependencies]
-dev = [
-    "doc-checker @ git+https://github.com/murogrande/doc_checker.git",
-]
-```
+Hooks use `language: system`, so `doc-checker` must be installed in your environment.
 
 Use `--warn-only` for non-blocking checks:
 
 ```yaml
     - id: doc-checker-basic
-      args: ["--warn-only"]  # reports issues without failing the commit
+      args: ["--modules", "my_package", "--warn-only"]
 ```
 
 ## Architecture
 
 ```
-CLI → DriftDetector → {parsers, code_analyzer, link_checker, llm_checker} → DriftReport → formatters
+CLI -> DriftDetector -> {parsers, code_analyzer, link_checker, llm_checker} -> DriftReport -> formatters
 ```
 
 **Modules:**
-- `models.py` - Dataclasses (SignatureInfo, DocReference, DriftReport, etc.)
-- `parsers.py` - MarkdownParser/YamlParser for mkdocstrings refs and links
-- `code_analyzer.py` - Introspect Python modules via importlib/inspect (recursive via pkgutil.walk_packages)
-- `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
-- `llm_backends.py` - LLMBackend abstraction (Ollama, OpenAI)
-- `llm_checker.py` - QualityChecker for LLM docstring evaluation
-- `prompts.py` - LLM prompt templates
 - `checkers.py` - DriftDetector orchestrates all checks
+- `parsers.py` - MarkdownParser (single-pass scan, cached) / YamlParser
+- `code_analyzer.py` - Introspect Python modules via importlib/inspect (cached)
+- `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
+- `llm_checker.py` - QualityChecker for LLM docstring evaluation
+- `models.py` - Dataclasses (SignatureInfo, DocReference, DriftReport, etc.)
 - `formatters.py` - Report rendering (text/JSON)
 - `cli.py` - Command-line interface
 
@@ -119,20 +116,20 @@ DOCUMENTATION DRIFT REPORT
 ============================================================
 
 Missing from docs (2):
-  - emu_mps.MPS.canonical_form
-  - emu_sv.StateVector.measure
+  - my_package.MyClass.some_method
+  - my_package.utils.helper_func
 
 Broken references (1):
-  - emu_mps.old_class in docs/api.md:42
+  - my_package.OldClass in docs/api.md:42
 
-Broken local links in docstrings (1):
-  emu_mps.MPS (docstring):20: advanced/missing.md#precision
+Broken local links (1):
+  docs/guide.md:15: ../missing-file.md
 
 Broken external links (1):
-  docs/guide.md:15: https://broken-link.com (status: 404)
+  docs/guide.md:20: https://example.com/broken (status: 404)
 
 Undocumented parameters (1):
-  - emu_mps.MPS.__init__: chi, precision
+  - my_package.MyClass.__init__: timeout, retries
 
 ============================================================
 ```

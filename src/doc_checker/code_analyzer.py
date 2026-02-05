@@ -25,6 +25,9 @@ class CodeAnalyzer:
             root_path: Project root path (added to sys.path for imports).
         """
         self.root_path = root_path
+        self._api_cache: dict[
+            tuple[str, frozenset[str]], tuple[list[SignatureInfo], set[str]]
+        ] = {}
 
     def get_public_apis(self, module_name: str) -> list[SignatureInfo]:
         """Extract all public APIs from a module.
@@ -72,7 +75,7 @@ class CodeAnalyzer:
         """Extract public APIs from a module and all its submodules.
 
         Uses pkgutil.walk_packages() to discover submodules, then
-        calls get_public_apis() on each.
+        calls get_public_apis() on each. Results are cached.
 
         Args:
             module_name: Top-level module name (e.g. "emu_mps").
@@ -85,6 +88,9 @@ class CodeAnalyzer:
             ignore entries).
         """
         ignore = ignore_submodules or set()
+        cache_key = (module_name, frozenset(ignore))
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
         matched_ignores: set[str] = set()
 
         try:
@@ -128,6 +134,7 @@ class CodeAnalyzer:
                     all_apis.append(api)
 
         unmatched = module_ignores - matched_ignores
+        self._api_cache[cache_key] = (all_apis, unmatched)
         return all_apis, unmatched
 
     def _extract_signature(
