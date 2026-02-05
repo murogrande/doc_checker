@@ -1,4 +1,8 @@
-"""Parsers for extracting references and links from documentation."""
+"""Parsers for extracting references and links from documentation.
+
+Provides MarkdownParser for scanning .md/.ipynb files and YamlParser for
+mkdocs.yml nav validation. Uses single-pass scanning with caching for efficiency.
+"""
 
 from __future__ import annotations
 
@@ -22,12 +26,16 @@ class MarkdownParser:
         docs_path: Root directory to scan for documentation files.
     """
 
-    # Regex patterns
+    # Regex: ::: or :: followed by dotted identifier (mkdocstrings directive)
     MKDOCSTRINGS_PATTERN = re.compile(r"^:::?\s+([\w.]+)", re.MULTILINE)
+    # Regex: [text](https://...) - markdown link with http(s) URL
     MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\((https?://[^)]+)\)")
+    # Regex: bare URL not preceded by ( or [ (avoids matching inside markdown links)
     BARE_URL_PATTERN = re.compile(r"(?<![(\[])(https?://[^\s\)>\]\"']+)")
 
+    # Supported local file extensions for link detection
     _FILE_EXTENSIONS = r"\.py|\.ipynb|\.md|\.txt|\.yml|\.yaml|\.json|\.toml"
+    # Regex: [text](path) where path ends in known extension or starts with ./ or ../
     LOCAL_LINK_PATTERN = re.compile(
         rf"\[([^\]]*)\]\(([^)]+?(?:{_FILE_EXTENSIONS})(?:#[^)]*)?|\.\.?/[^)]+)\)"
     )
@@ -117,7 +125,12 @@ class MarkdownParser:
     # -------------------------------------------------------------------------
 
     def _ensure_scanned(self) -> None:
-        """Single pass through all docs, populating all caches."""
+        """Single pass through all docs, populating all caches.
+
+        Scans .md files for refs/links/local links, and .ipynb files for
+        external/local links only (notebooks don't have mkdocstrings refs).
+        Called lazily on first access to any public find_* method.
+        """
         if self._scanned:
             return
         self._refs_cache = []
@@ -150,7 +163,12 @@ class MarkdownParser:
         self._scanned = True
 
     def _extract_from_markdown(self, content: str, md_file: Path) -> None:
-        """Extract refs, external links, local links from a single md file."""
+        """Extract refs, external links, local links from a single md file.
+
+        Args:
+            content: Full text content of the markdown file.
+            md_file: Path to the source file (for location tracking).
+        """
         for line_num, line in enumerate(content.split("\n"), 1):
             # mkdocstrings refs
             match = self.MKDOCSTRINGS_PATTERN.match(line.strip())
@@ -180,7 +198,16 @@ class MarkdownParser:
     def _extract_external_links_to_cache(
         self, text: str, file_path: Path, line_num: int
     ) -> None:
-        """Extract external links to cache (used during single-pass scan)."""
+        """Extract external links to cache (used during single-pass scan).
+
+        Finds both markdown links and bare URLs. Deduplicates URLs that appear
+        as both formats on the same line (markdown link takes precedence).
+
+        Args:
+            text: Line or cell text to scan.
+            file_path: Source file for location tracking.
+            line_num: Line or cell number for location tracking.
+        """
         seen_urls: set[str] = set()
         for match in self.MARKDOWN_LINK_PATTERN.finditer(text):
             link_text, url = match.groups()
@@ -201,7 +228,14 @@ class MarkdownParser:
                 seen_urls.add(url)
 
     def _read_file(self, file_path: Path) -> str | None:
-        """Read file content, return None on error."""
+        """Read file content, return None on error.
+
+        Args:
+            file_path: Path to file to read.
+
+        Returns:
+            File content as string, or None if read fails (logs warning).
+        """
         try:
             return file_path.read_text()
         except Exception as e:
