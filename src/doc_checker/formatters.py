@@ -34,19 +34,19 @@ def format_report(report: DriftReport) -> str:
 
     if report.broken_external_links:
         lines.append(f"Broken external links ({len(report.broken_external_links)}):")
-        for link_info in report.broken_external_links:
-            status = link_info.get("status", "unknown")
-            url = link_info.get("url", "unknown")
-            location = link_info.get("location", "unknown")
+        for ext_link in report.broken_external_links:
+            status = ext_link.get("status", "unknown")
+            url = ext_link.get("url", "unknown")
+            location = ext_link.get("location", "unknown")
             lines.append(f"  {location}: {url} (status: {status})")
         lines.append("")
 
     if report.broken_local_links:
         lines.append(f"Broken local links ({len(report.broken_local_links)}):")
-        for link_info in report.broken_local_links:
-            path = link_info.get("path", "unknown")
-            location = link_info.get("location", "unknown")
-            reason = link_info.get("reason", "")
+        for local_link in report.broken_local_links:
+            path = local_link.get("path", "unknown")
+            location = local_link.get("location", "unknown")
+            reason = local_link.get("reason", "")
             if reason:
                 lines.append(f"  {location}: {path} ({reason})")
             else:
@@ -55,9 +55,9 @@ def format_report(report: DriftReport) -> str:
 
     if report.broken_mkdocs_paths:
         lines.append(f"Broken mkdocs.yml paths ({len(report.broken_mkdocs_paths)}):")
-        for path_info in report.broken_mkdocs_paths:
-            path = path_info.get("path", "unknown")
-            location = path_info.get("location", "mkdocs.yml")
+        for mkdocs_path in report.broken_mkdocs_paths:
+            path = mkdocs_path.get("path", "unknown")
+            location = mkdocs_path.get("location", "mkdocs.yml")
             lines.append(f"  {location}: {path}")
         lines.append("")
 
