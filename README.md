@@ -51,7 +51,7 @@ doc-checker --modules my_package --check-quality --llm-model gpt-4o --root .
 doc-checker --modules my_package --check-quality --quality-sample 0.1 --root .
 
 # Multiple modules
-doc-checker --modules my_package --modules other_pkg --root /path/to/project
+doc-checker --modules my_package other_pkg --root /path/to/project
 
 # Skip specific submodules (fully qualified paths)
 doc-checker --modules my_package --ignore-submodules my_package.internal --root .
