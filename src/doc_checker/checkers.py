@@ -1,4 +1,9 @@
-"""Drift detection orchestrator."""
+"""Drift detection orchestrator.
+
+Provides DriftDetector class that coordinates all documentation checks:
+API coverage, broken references, param docs, local/external links, and
+optional LLM-based quality analysis.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,20 @@ if TYPE_CHECKING:
 
 
 class DriftDetector:
-    """Detect documentation drift in a Python project."""
+    """Detect documentation drift in a Python project.
+
+    Coordinates multiple checkers to find discrepancies between code and docs:
+    - Missing API documentation (public symbols not in mkdocstrings refs)
+    - Broken mkdocstrings ::: references (refs that don't resolve)
+    - Undocumented function parameters
+    - Broken local/external links in markdown, notebooks, docstrings
+    - Invalid mkdocs.yml nav paths
+    - Optional LLM-based docstring quality analysis
+
+    Attributes:
+        PULSER_REEXPORTS: Names to skip in coverage check (Pulser-specific).
+        IGNORE_PARAMS: Parameter names to skip in param doc check.
+    """
 
     PULSER_REEXPORTS = {  # TODO: make configurable via CLI
         "BitStrings",
@@ -164,6 +182,14 @@ class DriftDetector:
 
         Checks three patterns: (1) short name in module's doc_names set,
         (2) exact fqn match in documented, (3) suffix match for re-exports.
+
+        Args:
+            api: SignatureInfo with module and name attributes.
+            documented: Set of all ::: reference strings found in docs.
+            doc_names: Mapping of base module -> set of documented names/refs.
+
+        Returns:
+            True if API is documented via any naming pattern.
         """
         base = api.module.split(".")[0]
         return (
@@ -189,6 +215,12 @@ class DriftDetector:
 
         Tries progressively shorter module prefixes (a.b.c → a.b → a) then
         getattr for remaining parts. Returns True if any combo succeeds.
+
+        Args:
+            reference: Dotted path like "pkg.module.Class.method".
+
+        Returns:
+            True if reference can be imported and resolved.
         """
         parts = reference.split(".")
         for i in range(len(parts), 0, -1):
@@ -243,6 +275,11 @@ class DriftDetector:
 
         Checks: (1) path resolves to existing file, (2) notebook links omit
         .ipynb extension, (3) .py files are included in mkdocs nav.
+
+        Args:
+            link: LocalLink with path, file_path, line_number, text.
+            nav: Set of paths from mkdocs.yml nav, or None if unavailable.
+            report: DriftReport to append broken links to.
         """
         fp = link.path.split("#")[0].rstrip("/")
         suffix, ldir = link.file_path.suffix, link.file_path.parent
@@ -267,7 +304,15 @@ class DriftDetector:
 
         Resolution order: (1) direct relative from link's dir, (2) ../ from
         docs root, (3) absolute from project root, (4) mkdocs URL-style with
-        auto-extension for notebooks. Returns resolved Path or None.
+        auto-extension for notebooks.
+
+        Args:
+            ldir: Directory containing the source file with the link.
+            fp: Link path (may be relative, absolute, or URL-style).
+            suffix: Source file extension (.md or .ipynb).
+
+        Returns:
+            Resolved Path if file exists, None otherwise.
         """
         docs = self.root_path / "docs"
         # Direct relative
@@ -300,7 +345,16 @@ class DriftDetector:
     def _broken(
         self, link: LocalLink, path: str, reason: str | None = None
     ) -> BrokenLinkInfo:
-        """Create a BrokenLinkInfo dict from a LocalLink."""
+        """Create a BrokenLinkInfo dict from a LocalLink.
+
+        Args:
+            link: Source LocalLink with file_path, line_number, text.
+            path: The broken path string to report.
+            reason: Optional explanation (e.g., "notebook links should omit .ipynb").
+
+        Returns:
+            BrokenLinkInfo dict with path, location, text, and optional reason.
+        """
         info: BrokenLinkInfo = {
             "path": path,
             "location": f"{link.file_path}:{link.line_number}",
@@ -349,7 +403,15 @@ class DriftDetector:
         """Resolve a docstring link using multiple base directories.
 
         Tries: (1) relative from base (API's doc page dir), (2) ../ from
-        docs root, (3) absolute from project root. Returns first match.
+        docs root, (3) absolute from project root.
+
+        Args:
+            fp: Link path from docstring (fragment stripped).
+            base: Directory of md file containing ::: directive for this API.
+            docs: Project docs/ directory.
+
+        Returns:
+            Resolved Path if file exists, None otherwise.
         """
         for b, pre in [(base, ""), (docs, ".."), (self.root_path, "/")]:
             if not pre or fp.startswith(pre):
@@ -363,6 +425,10 @@ class DriftDetector:
 
         Uses LinkChecker with aiohttp (or urllib fallback). Broken links
         appended to report.broken_external_links with status code/error.
+
+        Args:
+            report: DriftReport to append broken links to.
+            verbose: Print progress (link count, checking status).
         """
         if verbose:
             print("Finding external links...")
@@ -394,6 +460,14 @@ class DriftDetector:
         Lazily imports QualityChecker to avoid hard deps. Supports ollama
         (default: qwen2.5:3b) and openai (default: gpt-4o-mini) backends.
         Issues appended to report.quality_issues.
+
+        Args:
+            report: DriftReport to append quality issues and warnings to.
+            backend: LLM backend ("ollama" or "openai").
+            model: Model name override, or None for backend default.
+            api_key: API key for openai backend (ignored for ollama).
+            sample_rate: Fraction of APIs to check (0.0-1.0).
+            verbose: Print progress (backend, model info).
         """
         try:
             from .llm_checker import QualityChecker
