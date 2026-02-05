@@ -2,7 +2,7 @@
 
 Check documentation drift: broken links, undocumented APIs, invalid references.
 
-**Requires:** mkdocs project with `mkdocs.yml` containing a `nav:` section and `docs/` directory. Works with [mkdocstrings](https://mkdocstrings.github.io/) `::: module.Class` syntax for API documentation.
+**Requires:** Python >=3.9, mkdocs project with `mkdocs.yml` containing a `nav:` section and `docs/` directory. Works with [mkdocstrings](https://mkdocstrings.github.io/) `::: module.Class` syntax for API documentation.
 
 ## Features
 
@@ -44,9 +44,10 @@ doc-checker --modules my_package --check-basic --root /path/to/project
 # External HTTP link validation only (slow)
 doc-checker --modules my_package --check-external-links --root /path/to/project
 
-# LLM quality checks
+# LLM quality checks (default: ollama/qwen2.5:3b, openai/gpt-4o-mini)
 doc-checker --modules my_package --check-quality --root /path/to/project
 doc-checker --modules my_package --check-quality --llm-backend openai --root .
+doc-checker --modules my_package --check-quality --llm-model gpt-4o --root .
 doc-checker --modules my_package --check-quality --quality-sample 0.1 --root .
 
 # Multiple modules
