@@ -145,9 +145,11 @@ class DriftDetector:
         if not self.ignore_submodules:
             return
         unmatched: set[str] = set()
-        for m in self.modules:
-            _, u = self.code_analyzer.get_all_public_apis(m, self.ignore_submodules)
-            unmatched |= u
+        for module in self.modules:
+            _, unmatched_in_module = self.code_analyzer.get_all_public_apis(
+                module, self.ignore_submodules
+            )
+            unmatched |= unmatched_in_module
         for name in sorted(unmatched):
             report.warnings.append(
                 f"--ignore-submodules '{name}' did not match any subpackage"
@@ -161,14 +163,16 @@ class DriftDetector:
         APIs to report.missing_in_docs.
         """
         refs = self.md_parser.find_mkdocstrings_refs()
-        documented = {r.reference for r in refs}
-        doc_names: dict[str, set[str]] = {m: set() for m in self.modules}
-        for ref in documented:
-            parts = ref.split(".")
+        documented = {ref.reference for ref in refs}
+        doc_names: dict[str, set[str]] = {module: set() for module in self.modules}
+        for reference in documented:
+            parts = reference.split(".")
             if len(parts) >= 2 and parts[0] in doc_names:
-                doc_names[parts[0]].update([parts[-1], ref])
-        for m in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(m, self.ignore_submodules)
+                doc_names[parts[0]].update([parts[-1], reference])
+        for module in self.modules:
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module, self.ignore_submodules
+            )
             for api in apis:
                 if self.ignore_pulser_reexports and api.name in self.PULSER_REEXPORTS:
                     continue
@@ -195,7 +199,7 @@ class DriftDetector:
         return (
             api.name in doc_names.get(base, set())
             or f"{api.module}.{api.name}" in documented
-            or any(r.endswith(f".{api.name}") for r in documented)
+            or any(ref.endswith(f".{api.name}") for ref in documented)
         )
 
     def _check_references(self, report: DriftReport) -> None:
@@ -240,16 +244,19 @@ class DriftDetector:
         in the docstring text. Skips IGNORE_PARAMS (self, cls, etc). Missing
         params appended to report.undocumented_params.
         """
-        for m in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(m, self.ignore_submodules)
+        for module in self.modules:
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module, self.ignore_submodules
+            )
             for api in apis:
                 if not api.docstring or not api.parameters:
                     continue
                 undoc = [
-                    p.split(":")[0].split("=")[0].strip()
-                    for p in api.parameters
-                    if p.split(":")[0].split("=")[0].strip() not in self.IGNORE_PARAMS
-                    and p.split(":")[0].split("=")[0].strip() not in (api.docstring or "")
+                    param.split(":")[0].split("=")[0].strip()
+                    for param in api.parameters
+                    if param.split(":")[0].split("=")[0].strip() not in self.IGNORE_PARAMS
+                    and param.split(":")[0].split("=")[0].strip()
+                    not in (api.docstring or "")
                 ]
                 if undoc:
                     report.undocumented_params.append(
@@ -281,16 +288,16 @@ class DriftDetector:
             nav: Set of paths from mkdocs.yml nav, or None if unavailable.
             report: DriftReport to append broken links to.
         """
-        fp = link.path.split("#")[0].rstrip("/")
-        suffix, ldir = link.file_path.suffix, link.file_path.parent
-        resolved = self._resolve_path(ldir, fp, suffix)
+        link_path = link.path.split("#")[0].rstrip("/")
+        suffix, link_dir = link.file_path.suffix, link.file_path.parent
+        resolved = self._resolve_path(link_dir, link_path, suffix)
         if not resolved:
-            report.broken_local_links.append(self._broken(link, fp))
-        elif suffix == ".ipynb" and fp.endswith(".ipynb"):
+            report.broken_local_links.append(self._broken(link, link_path))
+        elif suffix == ".ipynb" and link_path.endswith(".ipynb"):
             report.broken_local_links.append(
-                self._broken(link, fp, "notebook links should omit .ipynb")
+                self._broken(link, link_path, "notebook links should omit .ipynb")
             )
-        elif fp.endswith(".py") and nav:
+        elif link_path.endswith(".py") and nav:
             try:
                 if str(resolved.relative_to(self.root_path / "docs")) not in nav:
                     report.broken_local_links.append(
@@ -299,7 +306,7 @@ class DriftDetector:
             except ValueError:
                 pass
 
-    def _resolve_path(self, ldir: Path, fp: str, suffix: str) -> Path | None:
+    def _resolve_path(self, link_dir: Path, link_path: str, suffix: str) -> Path | None:
         """Try multiple strategies to resolve a local link path.
 
         Resolution order: (1) direct relative from link's dir, (2) ../ from
@@ -307,8 +314,8 @@ class DriftDetector:
         auto-extension for notebooks.
 
         Args:
-            ldir: Directory containing the source file with the link.
-            fp: Link path (may be relative, absolute, or URL-style).
+            link_dir: Directory containing the source file with the link.
+            link_path: Link path (may be relative, absolute, or URL-style).
             suffix: Source file extension (.md or .ipynb).
 
         Returns:
@@ -316,30 +323,33 @@ class DriftDetector:
         """
         docs = self.root_path / "docs"
         # Direct relative
-        if (r := (ldir / fp).resolve()).exists():
-            return r
+        if (resolved := (link_dir / link_path).resolve()).exists():
+            return resolved
         # ../ from docs root
-        if fp.startswith("..") and (r := (docs / fp).resolve()).exists():
-            return r
+        if (
+            link_path.startswith("..")
+            and (resolved := (docs / link_path).resolve()).exists()
+        ):
+            return resolved
         # Absolute from project root
         if (
-            fp.startswith("/")
-            and (r := (self.root_path / fp.lstrip("/")).resolve()).exists()
+            link_path.startswith("/")
+            and (resolved := (self.root_path / link_path.lstrip("/")).resolve()).exists()
         ):
-            return r
+            return resolved
         # mkdocs URL-style
-        if fp.startswith(".."):
-            src = next(
-                (f for f in ldir.iterdir() if f.suffix == suffix),
-                ldir / (ldir.name + suffix),
+        if link_path.startswith(".."):
+            src_file = next(
+                (file for file in link_dir.iterdir() if file.suffix == suffix),
+                link_dir / (link_dir.name + suffix),
             )
-            r = (ldir / src.stem / fp).resolve()
-            if r.exists():
-                return r
-            if not r.suffix:
+            resolved = (link_dir / src_file.stem / link_path).resolve()
+            if resolved.exists():
+                return resolved
+            if not resolved.suffix:
                 for ext in (".md", ".ipynb") if suffix == ".ipynb" else (".md",):
-                    if r.with_suffix(ext).exists():
-                        return r.with_suffix(ext)
+                    if resolved.with_suffix(ext).exists():
+                        return resolved.with_suffix(ext)
         return None
 
     def _broken(
@@ -373,15 +383,17 @@ class DriftDetector:
         """
         docs = self.root_path / "docs"
         refs = {
-            r.reference: r.file_path.parent
-            for r in self.md_parser.find_mkdocstrings_refs()
+            ref.reference: ref.file_path.parent
+            for ref in self.md_parser.find_mkdocstrings_refs()
         }
-        for r, p in list(refs.items()):
-            short = r.split(".")[0] + "." + r.rsplit(".", 1)[-1]
-            if short != r:
-                refs.setdefault(short, p)
-        for m in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(m, self.ignore_submodules)
+        for reference, parent_dir in list(refs.items()):
+            short = reference.split(".")[0] + "." + reference.rsplit(".", 1)[-1]
+            if short != reference:
+                refs.setdefault(short, parent_dir)
+        for module in self.modules:
+            apis, _ = self.code_analyzer.get_all_public_apis(
+                module, self.ignore_submodules
+            )
             for api in apis:
                 if not api.docstring:
                     continue
@@ -389,8 +401,8 @@ class DriftDetector:
                     f"{api.module}.{api.name}", docs
                 )
                 for link in self.md_parser.parse_local_links_in_text(api.docstring, base):
-                    fp = link.path.split("#")[0]
-                    if not self._resolve_ds_link(fp, base, docs):
+                    link_path = link.path.split("#")[0]
+                    if not self._resolve_ds_link(link_path, base, docs):
                         report.broken_local_links.append(
                             {
                                 "path": link.path,
@@ -399,25 +411,27 @@ class DriftDetector:
                             }
                         )
 
-    def _resolve_ds_link(self, fp: str, base: Path, docs: Path) -> Path | None:
+    def _resolve_ds_link(self, link_path: str, base: Path, docs: Path) -> Path | None:
         """Resolve a docstring link using multiple base directories.
 
         Tries: (1) relative from base (API's doc page dir), (2) ../ from
         docs root, (3) absolute from project root.
 
         Args:
-            fp: Link path from docstring (fragment stripped).
+            link_path: Link path from docstring (fragment stripped).
             base: Directory of md file containing ::: directive for this API.
             docs: Project docs/ directory.
 
         Returns:
             Resolved Path if file exists, None otherwise.
         """
-        for b, pre in [(base, ""), (docs, ".."), (self.root_path, "/")]:
-            if not pre or fp.startswith(pre):
-                r = (b / (fp.lstrip("/") if pre == "/" else fp)).resolve()
-                if r.exists():
-                    return r
+        for base_dir, prefix in [(base, ""), (docs, ".."), (self.root_path, "/")]:
+            if not prefix or link_path.startswith(prefix):
+                resolved = (
+                    base_dir / (link_path.lstrip("/") if prefix == "/" else link_path)
+                ).resolve()
+                if resolved.exists():
+                    return resolved
         return None
 
     def _check_external_links(self, report: DriftReport, verbose: bool) -> None:
@@ -435,14 +449,14 @@ class DriftDetector:
         links = self.md_parser.find_external_links()
         if verbose:
             print(f"Found {len(links)} links, checking...")
-        for r in self.link_checker.check_links(links, verbose):
-            if r.is_broken:
+        for result in self.link_checker.check_links(links, verbose):
+            if result.is_broken:
                 report.broken_external_links.append(
                     {
-                        "url": r.link.url,
-                        "status": r.status_code or r.error,
-                        "location": f"{r.link.file_path}:{r.link.line_number}",
-                        "text": r.link.text,
+                        "url": result.link.url,
+                        "status": result.status_code or result.error,
+                        "location": f"{result.link.file_path}:{result.link.line_number}",
+                        "text": result.link.text,
                     }
                 )
 
@@ -489,7 +503,7 @@ class DriftDetector:
             return
         if verbose:
             print(f"LLM quality checks ({backend}, {checker.backend.model})...")
-        for m in self.modules:
+        for module in self.modules:
             report.quality_issues.extend(
-                checker.check_module_quality(m, verbose, sample_rate)
+                checker.check_module_quality(module, verbose, sample_rate)
             )
