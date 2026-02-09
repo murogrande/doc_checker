@@ -447,6 +447,7 @@ class DriftDetector:
         if verbose:
             print("Finding external links...")
         links = self.md_parser.find_external_links()
+        report.total_external_links = len(links)
         if verbose:
             print(f"Found {len(links)} links, checking...")
         for result in self.link_checker.check_links(links, verbose):

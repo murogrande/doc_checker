@@ -194,6 +194,7 @@ class DriftReport:
     undocumented_params: list[dict[str, Any]] = field(default_factory=list)
     quality_issues: list[QualityIssue] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    total_external_links: int = 0
     llm_backend: str | None = None
     llm_model: str | None = None
 

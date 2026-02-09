@@ -32,8 +32,11 @@ def format_report(report: DriftReport) -> str:
             lines.append(f"  - {broken_ref}")
         lines.append("")
 
+    if report.total_external_links:
+        broken = len(report.broken_external_links)
+        total = report.total_external_links
+        lines.append(f"External links: {broken}/{total} broken")
     if report.broken_external_links:
-        lines.append(f"Broken external links ({len(report.broken_external_links)}):")
         for ext_link in report.broken_external_links:
             status = ext_link.get("status", "unknown")
             url = ext_link.get("url", "unknown")

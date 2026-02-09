@@ -154,8 +154,10 @@ def main() -> int:
         if args.json:
             print(json.dumps(report.to_dict(), indent=2))
         else:
+            total = report.total_external_links
+            broken = len(report.broken_external_links)
+            print(f"\nExternal links: {broken}/{total} broken")
             if report.broken_external_links:
-                print(f"\nBroken external links ({len(report.broken_external_links)}):")
                 for link_info in report.broken_external_links:
                     status = link_info.get("status", "unknown")
                     url = link_info.get("url", "unknown")
@@ -163,9 +165,6 @@ def main() -> int:
                     print(f"  {location}: {url} (status: {status})")
                 if not args.warn_only:
                     return 1
-                return 0
-            else:
-                print("All external links OK")
                 return 0
 
     return 0

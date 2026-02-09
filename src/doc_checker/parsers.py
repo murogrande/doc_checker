@@ -28,8 +28,10 @@ class MarkdownParser:
 
     # Regex: ::: or :: followed by dotted identifier (mkdocstrings directive)
     MKDOCSTRINGS_PATTERN = re.compile(r"^:::?\s+([\w.]+)", re.MULTILINE)
-    # Regex: [text](https://...) - markdown link with http(s) URL
-    MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\((https?://[^)]+)\)")
+    # Regex: [text](https://...) - supports nested brackets e.g. [[2]](url)
+    MARKDOWN_LINK_PATTERN = re.compile(
+        r"\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\((https?://[^)]+)\)"
+    )
     # Regex: bare URL not preceded by ( or [ (avoids matching inside markdown links)
     BARE_URL_PATTERN = re.compile(r"(?<![(\[])(https?://[^\s\)>\]\"']+)")
 
