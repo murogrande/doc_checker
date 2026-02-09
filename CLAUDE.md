@@ -42,7 +42,7 @@ CLI (cli.py) -> DriftDetector (checkers.py) -> {parsers, code_analyzer, link_che
 - `DriftDetector.check_all()` orchestrates all checks
 - `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; **cached** by `(module, ignore_submodules)` tuple
 - `MarkdownParser` uses **single-pass scanning**: `_ensure_scanned()` populates refs/external/local caches in one traversal
-- `LinkChecker` uses async aiohttp with urllib fallback; HEAD first, GET on 405; concurrency capped at 5
+- `LinkChecker` uses async aiohttp with urllib fallback; HEAD first, GET on 405; 403/429 accepted as not broken; concurrency capped at 5
 - `QualityChecker` lazily imported to avoid hard deps on ollama/openai
 
 **Reference validation** (`_is_valid_reference`): progressively imports dotted path — tries `importlib.import_module("a.b.c")`, then `"a.b"` + `getattr(mod, "c")`, etc. Returns True on first success.
