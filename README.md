@@ -126,7 +126,7 @@ Broken references (1):
 Broken local links (1):
   docs/guide.md:15: ../missing-file.md
 
-Broken external links (1):
+External links: 1/42 broken
   docs/guide.md:20: https://example.com/broken (status: 404)
 
 Undocumented parameters (1):
