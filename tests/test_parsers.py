@@ -218,6 +218,29 @@ class TestParserEdgeCases:
 
         assert links == []
 
+    def test_nested_bracket_links(self, tmp_docs: Path):
+        """Citation-style links like [[2]](url) are extracted."""
+        nb_file = tmp_docs / "citations.ipynb"
+        notebook = {
+            "cells": [
+                {
+                    "source": [
+                        "See [[1]](https://example.com/one)"
+                        " and [[2]](https://arxiv.org/pd/2406.12392)\n",
+                    ]
+                }
+            ],
+        }
+        nb_file.write_text(json.dumps(notebook))
+
+        parser = MarkdownParser(tmp_docs)
+        links = parser.find_external_links()
+
+        urls = {link.url for link in links}
+        assert "https://example.com/one" in urls
+        assert "https://arxiv.org/pd/2406.12392" in urls
+        assert len(links) == 2
+
     def test_single_colon_mkdocstrings_syntax(self, tmp_docs: Path):
         """Single colon mkdocstrings syntax (:: module.Class) is parsed."""
         md_file = tmp_docs / "single_colon.md"

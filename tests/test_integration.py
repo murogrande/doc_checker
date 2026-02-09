@@ -11,6 +11,7 @@ import pytest
 from doc_checker.checkers import DriftDetector
 from doc_checker.cli import main
 from doc_checker.formatters import format_report
+from doc_checker.models import DriftReport
 
 
 @pytest.fixture
@@ -159,6 +160,33 @@ def test_integration_report_formatting(integration_project: Path):
     assert "broken_references" in json_output
     assert "quality_issues" in json_output
     assert "has_issues" in json_output
+
+
+def test_format_report_external_links_summary():
+    """Format report shows external links summary."""
+    report = DriftReport(
+        total_external_links=10,
+        broken_external_links=[
+            {
+                "url": "https://bad.com",
+                "status": 404,
+                "location": "docs/a.md:1",
+                "text": "bad",
+            },
+        ],
+    )
+    output = format_report(report)
+    assert "External links: 1/10 broken" in output
+
+    # No broken links
+    report_ok = DriftReport(total_external_links=5)
+    output_ok = format_report(report_ok)
+    assert "External links: 0/5 broken" in output_ok
+
+    # No external check run -> no summary line
+    report_none = DriftReport()
+    output_none = format_report(report_none)
+    assert "External links" not in output_none
 
 
 def test_integration_with_quality_checks_mocked(integration_project: Path):

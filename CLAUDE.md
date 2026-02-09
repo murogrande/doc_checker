@@ -15,10 +15,12 @@ pip install -e ".[dev]"           # all dev deps (recommended)
 # Tests
 pytest                            # all
 pytest tests/test_checkers.py -v  # single file
+pytest tests/test_checkers.py::TestDriftDetector::test_name -v  # single test
 pytest -v --cov=doc_checker       # coverage
 
 # Lint
 pre-commit run --all-files
+mypy src/doc_checker              # type check only
 
 # Run
 doc-checker --modules my_pkg --root .                          # all checks
@@ -31,15 +33,21 @@ doc-checker --modules my_pkg --check-basic --warn-only --root .
 
 ## Architecture
 
+Source lives in `src/doc_checker/`.
+
 ```
 CLI (cli.py) -> DriftDetector (checkers.py) -> {parsers, code_analyzer, link_checker, llm_checker} -> DriftReport (models.py) -> formatters.py
 ```
 
 - `DriftDetector.check_all()` orchestrates all checks
-- `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; **cached** by `(module, ignore_submodules)`
+- `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; **cached** by `(module, ignore_submodules)` tuple
 - `MarkdownParser` uses **single-pass scanning**: `_ensure_scanned()` populates refs/external/local caches in one traversal
-- `LinkChecker` uses async aiohttp with urllib fallback
+- `LinkChecker` uses async aiohttp with urllib fallback; HEAD first, GET on 405; 403/429 accepted as not broken; concurrency capped at 5
 - `QualityChecker` lazily imported to avoid hard deps on ollama/openai
+
+**Reference validation** (`_is_valid_reference`): progressively imports dotted path — tries `importlib.import_module("a.b.c")`, then `"a.b"` + `getattr(mod, "c")`, etc. Returns True on first success.
+
+**Local link resolution** order: direct relative from file dir → `../` from docs root → absolute from project root → mkdocs URL-style with auto `.ipynb` extension.
 
 **Key behaviors:**
 - No check flags -> runs all checks; `--check-basic` skips external/quality
@@ -49,10 +57,10 @@ CLI (cli.py) -> DriftDetector (checkers.py) -> {parsers, code_analyzer, link_che
 
 ## Tests
 
-Tests use `tmp_path` fixtures in `conftest.py`. Each creates isolated temp project structure.
+Tests use `tmp_path` fixtures in `conftest.py`. Each creates isolated temp project structure with fake modules and docs.
 
 ## Config
 
 - line-length: 90 (black/ruff)
-- mypy: strict, excludes tests/
+- mypy: strict (excludes tests/, ignores ollama/openai imports)
 - Python >=3.9
