@@ -9,7 +9,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from doc_checker.checkers import DriftDetector
+from doc_checker.checkers import CodeAnalyzer, DriftDetector
+from doc_checker.checkers_folder.api_coverage import (
+    _is_api_documented,
+)
+from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
+from doc_checker.checkers_folder.local_links import LocalLinksChecker
+from doc_checker.constants import IGNORE_PARAMS
+from doc_checker.parsers import MarkdownParser, YamlParser
 
 
 @pytest.fixture
@@ -657,29 +664,29 @@ class TestHelperMethods:
 
     def test_is_api_documented_by_short_name(self, test_project: Path):
         """Test _is_api_documented finds API by short name."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="TestClass", module="test_pkg")
         api.name = "TestClass"
 
         documented = {"test_pkg.TestClass"}
         documented_names = {"test_pkg": {"TestClass", "test_pkg.TestClass"}}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_by_full_path(self, test_project: Path):
         """Test _is_api_documented finds API by full module.name path."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="Helper", module="test_pkg.sub")
         api.name = "Helper"
 
         documented = {"test_pkg.sub.Helper"}
         documented_names = {"test_pkg": set()}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_by_suffix(self, test_project: Path):
         """Test _is_api_documented finds API by ref ending with .name."""
-        detector = DriftDetector(test_project, modules=["pkg"])
+        # detector = DriftDetector(test_project, modules=["pkg"])
         api = MagicMock(name="Widget", module="pkg")
         api.name = "Widget"
 
@@ -687,18 +694,18 @@ class TestHelperMethods:
         documented = {"some.other.path.Widget"}
         documented_names = {"pkg": set()}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_not_found(self, test_project: Path):
         """Test _is_api_documented returns False when not documented."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="Missing", module="test_pkg")
         api.name = "Missing"
 
         documented = {"test_pkg.Other"}
         documented_names = {"test_pkg": {"Other"}}
 
-        assert detector._is_api_documented(api, documented, documented_names) is False
+        assert _is_api_documented(api, documented, documented_names) is False
 
     def test_resolve_path_direct_relative(self, tmp_path: Path):
         """Test _resolve_path finds direct relative paths."""
@@ -709,8 +716,11 @@ class TestHelperMethods:
         (docs / "other.md").write_text("# Other")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: page.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "other.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+
+        result = detector_class._resolve_path(docs, "other.md", ".md")
 
         assert result is not None
         assert result.name == "other.md"
@@ -724,9 +734,11 @@ class TestHelperMethods:
         (sub / "page.md").write_text("# Page")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
         # From sub/, link to ../index.md
-        result = detector._resolve_path(sub, "../index.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(sub, "../index.md", ".md")
 
         assert result is not None
         assert result.name == "index.md"
@@ -740,8 +752,10 @@ class TestHelperMethods:
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
         (docs / "index.md").write_text("# Index")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "/script.py", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(docs, "/script.py", ".md")
 
         assert result is not None
         assert result.name == "script.py"
@@ -753,8 +767,10 @@ class TestHelperMethods:
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
         (docs / "index.md").write_text("# Index")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "missing.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(docs, "missing.md", ".md")
 
         assert result is None
 
@@ -765,8 +781,16 @@ class TestHelperMethods:
         (docs / "guide.md").write_text("# Guide")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_ds_link("guide.md", docs, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+        result = detector_class._resolve_ds_link("guide.md", docs, docs)
 
         assert result is not None
         assert result.name == "guide.md"
@@ -779,9 +803,17 @@ class TestHelperMethods:
         (docs / "guide.md").write_text("# Guide")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: guide.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
         # Link from api/ to ../guide.md
-        result = detector._resolve_ds_link("../guide.md", sub, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+        result = detector_class._resolve_ds_link("../guide.md", sub, docs)
 
         assert result is not None
         assert result.name == "guide.md"
@@ -792,13 +824,22 @@ class TestHelperMethods:
         docs.mkdir()
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_ds_link("missing.md", docs, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+
+        result = detector_class._resolve_ds_link("missing.md", docs, docs)
 
         assert result is None
 
     def test_ignore_params_class_constant(self, test_project: Path):
         """Test IGNORE_PARAMS is accessible as class constant."""
-        assert "cls" in DriftDetector.IGNORE_PARAMS
-        assert "value" in DriftDetector.IGNORE_PARAMS
-        assert "self" not in DriftDetector.IGNORE_PARAMS  # self not in list
+        assert "cls" in IGNORE_PARAMS
+        assert "value" in IGNORE_PARAMS
+        assert "self" not in IGNORE_PARAMS  # self not in list

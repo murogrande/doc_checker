@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from .code_analyzer import CodeAnalyzer
+from doc_checker.checkers_folder.api_coverage import ApiCoverageChecker
+from doc_checker.checkers_folder.doc_params import ParamDocsChecker
+from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
+from doc_checker.checkers_folder.local_links import LocalLinksChecker
+from doc_checker.code_analyzer import CodeAnalyzer
+
 from .link_checker import LinkChecker
-from .models import BrokenLinkInfo, DriftReport, LocalLink
+from .models import DriftReport
 from .parsers import MarkdownParser, YamlParser
-
-if TYPE_CHECKING:
-    from .models import SignatureInfo
 
 
 class DriftDetector:
@@ -35,29 +36,6 @@ class DriftDetector:
         PULSER_REEXPORTS: Names to skip in coverage check (Pulser-specific).
         IGNORE_PARAMS: Parameter names to skip in param doc check.
     """
-
-    PULSER_REEXPORTS = {  # TODO: make configurable via CLI
-        "BitStrings",
-        "CorrelationMatrix",
-        "Energy",
-        "EnergyVariance",
-        "EnergySecondMoment",
-        "Expectation",
-        "Fidelity",
-        "Occupation",
-        "StateResult",
-        "Results",
-    }
-    IGNORE_PARAMS = {
-        "value",
-        "names",
-        "module",
-        "qualname",
-        "type",
-        "start",
-        "boundary",
-        "cls",
-    }
 
     def __init__(
         self,
@@ -122,10 +100,27 @@ class DriftDetector:
             }.get(quality_backend)
         self._warn_unmatched_ignores(report)
         if not skip_basic_checks:
-            self._check_api_coverage(report)
+            ApiCoverageChecker(
+                self.code_analyzer,
+                self.modules,
+                self.ignore_submodules,
+                self.md_parser,
+                self.ignore_pulser_reexports,
+            ).check(report)
             self._check_references(report)
-            self._check_param_docs(report)
-            self._check_local_links(report)
+            ParamDocsChecker(
+                self.code_analyzer, self.modules, self.ignore_submodules
+            ).check(report)
+            LocalLinksChecker(self.root_path, self.md_parser, self.yaml_parser).check(
+                report
+            )
+            DocstringsLinksChecker(
+                self.code_analyzer,
+                self.modules,
+                self.ignore_submodules,
+                self.root_path,
+                self.md_parser,
+            ).check(report)
             report.broken_mkdocs_paths.extend(self.yaml_parser.check_nav_paths())
         if check_external_links:
             self._check_external_links(report, verbose)
@@ -154,53 +149,6 @@ class DriftDetector:
             report.warnings.append(
                 f"--ignore-submodules '{name}' did not match any subpackage"
             )
-
-    def _check_api_coverage(self, report: DriftReport) -> None:
-        """Find public APIs missing from mkdocstrings ::: references.
-
-        Scans all modules for public APIs, then checks each against documented
-        refs. Matches by short name, full path, or suffix. Appends missing
-        APIs to report.missing_in_docs.
-        """
-        refs = self.md_parser.find_mkdocstrings_refs()
-        documented = {ref.reference for ref in refs}
-        doc_names: dict[str, set[str]] = {module: set() for module in self.modules}
-        for reference in documented:
-            parts = reference.split(".")
-            if len(parts) >= 2 and parts[0] in doc_names:
-                doc_names[parts[0]].update([parts[-1], reference])
-        for module in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(
-                module, self.ignore_submodules
-            )
-            for api in apis:
-                if self.ignore_pulser_reexports and api.name in self.PULSER_REEXPORTS:
-                    continue
-                if not self._is_api_documented(api, documented, doc_names):
-                    report.missing_in_docs.append(f"{api.module}.{api.name}")
-
-    def _is_api_documented(
-        self, api: "SignatureInfo", documented: set[str], doc_names: dict[str, set[str]]
-    ) -> bool:
-        """Check if API is documented via any naming convention.
-
-        Checks three patterns: (1) short name in module's doc_names set,
-        (2) exact fqn match in documented, (3) suffix match for re-exports.
-
-        Args:
-            api: SignatureInfo with module and name attributes.
-            documented: Set of all ::: reference strings found in docs.
-            doc_names: Mapping of base module -> set of documented names/refs.
-
-        Returns:
-            True if API is documented via any naming pattern.
-        """
-        base = api.module.split(".")[0]
-        return (
-            api.name in doc_names.get(base, set())
-            or f"{api.module}.{api.name}" in documented
-            or any(ref.endswith(f".{api.name}") for ref in documented)
-        )
 
     def _check_references(self, report: DriftReport) -> None:
         """Find mkdocstrings ::: refs that don't resolve to Python objects.
@@ -236,203 +184,6 @@ class DriftDetector:
             except (ImportError, AttributeError):
                 continue
         return False
-
-    def _check_param_docs(self, report: DriftReport) -> None:
-        """Find function parameters not mentioned in docstrings.
-
-        For each API with params and docstring, checks if param names appear
-        in the docstring text. Skips IGNORE_PARAMS (self, cls, etc). Missing
-        params appended to report.undocumented_params.
-        """
-        for module in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(
-                module, self.ignore_submodules
-            )
-            for api in apis:
-                if not api.docstring or not api.parameters:
-                    continue
-                undoc = [
-                    param.split(":")[0].split("=")[0].strip()
-                    for param in api.parameters
-                    if param.split(":")[0].split("=")[0].strip() not in self.IGNORE_PARAMS
-                    and param.split(":")[0].split("=")[0].strip()
-                    not in (api.docstring or "")
-                ]
-                if undoc:
-                    report.undocumented_params.append(
-                        {"name": f"{api.module}.{api.name}", "params": ", ".join(undoc)}
-                    )
-
-    def _check_local_links(self, report: DriftReport) -> None:
-        """Verify local file links in markdown, notebooks, and docstrings.
-
-        Validates relative/absolute paths resolve to existing files. Applies
-        mkdocs-specific rules: notebooks must omit .ipynb extension, .py files
-        must be in mkdocs nav. Also checks links in Python docstrings.
-        """
-        nav = self.yaml_parser.get_nav_files()
-        for link in self.md_parser.find_local_links():
-            self._validate_link(link, nav, report)
-        self._check_docstring_links(report)
-
-    def _validate_link(
-        self, link: LocalLink, nav: set[str] | None, report: DriftReport
-    ) -> None:
-        """Validate a single local link against filesystem and mkdocs rules.
-
-        Checks: (1) path resolves to existing file, (2) notebook links omit
-        .ipynb extension, (3) .py files are included in mkdocs nav.
-
-        Args:
-            link: LocalLink with path, file_path, line_number, text.
-            nav: Set of paths from mkdocs.yml nav, or None if unavailable.
-            report: DriftReport to append broken links to.
-        """
-        link_path = link.path.split("#")[0].rstrip("/")
-        suffix, link_dir = link.file_path.suffix, link.file_path.parent
-        resolved = self._resolve_path(link_dir, link_path, suffix)
-        if not resolved:
-            report.broken_local_links.append(self._broken(link, link_path))
-        elif suffix == ".ipynb" and link_path.endswith(".ipynb"):
-            report.broken_local_links.append(
-                self._broken(link, link_path, "notebook links should omit .ipynb")
-            )
-        elif link_path.endswith(".py") and nav:
-            try:
-                if str(resolved.relative_to(self.root_path / "docs")) not in nav:
-                    report.broken_local_links.append(
-                        self._broken(link, link.path, ".py file not in mkdocs nav")
-                    )
-            except ValueError:
-                pass
-
-    def _resolve_path(self, link_dir: Path, link_path: str, suffix: str) -> Path | None:
-        """Try multiple strategies to resolve a local link path.
-
-        Resolution order: (1) direct relative from link's dir, (2) ../ from
-        docs root, (3) absolute from project root, (4) mkdocs URL-style with
-        auto-extension for notebooks.
-
-        Args:
-            link_dir: Directory containing the source file with the link.
-            link_path: Link path (may be relative, absolute, or URL-style).
-            suffix: Source file extension (.md or .ipynb).
-
-        Returns:
-            Resolved Path if file exists, None otherwise.
-        """
-        docs = self.root_path / "docs"
-        # Direct relative
-        if (resolved := (link_dir / link_path).resolve()).exists():
-            return resolved
-        # ../ from docs root
-        if (
-            link_path.startswith("..")
-            and (resolved := (docs / link_path).resolve()).exists()
-        ):
-            return resolved
-        # Absolute from project root
-        if (
-            link_path.startswith("/")
-            and (resolved := (self.root_path / link_path.lstrip("/")).resolve()).exists()
-        ):
-            return resolved
-        # mkdocs URL-style
-        if link_path.startswith(".."):
-            src_file = next(
-                (file for file in link_dir.iterdir() if file.suffix == suffix),
-                link_dir / (link_dir.name + suffix),
-            )
-            resolved = (link_dir / src_file.stem / link_path).resolve()
-            if resolved.exists():
-                return resolved
-            if not resolved.suffix:
-                for ext in (".md", ".ipynb") if suffix == ".ipynb" else (".md",):
-                    if resolved.with_suffix(ext).exists():
-                        return resolved.with_suffix(ext)
-        return None
-
-    def _broken(
-        self, link: LocalLink, path: str, reason: str | None = None
-    ) -> BrokenLinkInfo:
-        """Create a BrokenLinkInfo dict from a LocalLink.
-
-        Args:
-            link: Source LocalLink with file_path, line_number, text.
-            path: The broken path string to report.
-            reason: Optional explanation (e.g., "notebook links should omit .ipynb").
-
-        Returns:
-            BrokenLinkInfo dict with path, location, text, and optional reason.
-        """
-        info: BrokenLinkInfo = {
-            "path": path,
-            "location": f"{link.file_path}:{link.line_number}",
-            "text": link.text,
-        }
-        if reason:
-            info["reason"] = reason
-        return info
-
-    def _check_docstring_links(self, report: DriftReport) -> None:
-        """Check local links in Python docstrings.
-
-        Links resolve relative to the md file containing the ::: directive
-        (matching mkdocstrings rendering). Builds fqn→dir map including
-        short-name aliases for re-exported APIs.
-        """
-        docs = self.root_path / "docs"
-        refs = {
-            ref.reference: ref.file_path.parent
-            for ref in self.md_parser.find_mkdocstrings_refs()
-        }
-        for reference, parent_dir in list(refs.items()):
-            short = reference.split(".")[0] + "." + reference.rsplit(".", 1)[-1]
-            if short != reference:
-                refs.setdefault(short, parent_dir)
-        for module in self.modules:
-            apis, _ = self.code_analyzer.get_all_public_apis(
-                module, self.ignore_submodules
-            )
-            for api in apis:
-                if not api.docstring:
-                    continue
-                fqn, base = f"{api.module}.{api.name}", refs.get(
-                    f"{api.module}.{api.name}", docs
-                )
-                for link in self.md_parser.parse_local_links_in_text(api.docstring, base):
-                    link_path = link.path.split("#")[0]
-                    if not self._resolve_ds_link(link_path, base, docs):
-                        report.broken_local_links.append(
-                            {
-                                "path": link.path,
-                                "location": f"{fqn} (docstring):{link.line_number}",
-                                "text": link.text,
-                            }
-                        )
-
-    def _resolve_ds_link(self, link_path: str, base: Path, docs: Path) -> Path | None:
-        """Resolve a docstring link using multiple base directories.
-
-        Tries: (1) relative from base (API's doc page dir), (2) ../ from
-        docs root, (3) absolute from project root.
-
-        Args:
-            link_path: Link path from docstring (fragment stripped).
-            base: Directory of md file containing ::: directive for this API.
-            docs: Project docs/ directory.
-
-        Returns:
-            Resolved Path if file exists, None otherwise.
-        """
-        for base_dir, prefix in [(base, ""), (docs, ".."), (self.root_path, "/")]:
-            if not prefix or link_path.startswith(prefix):
-                resolved = (
-                    base_dir / (link_path.lstrip("/") if prefix == "/" else link_path)
-                ).resolve()
-                if resolved.exists():
-                    return resolved
-        return None
 
     def _check_external_links(self, report: DriftReport, verbose: bool) -> None:
         """Validate external HTTP/HTTPS links via async requests.
