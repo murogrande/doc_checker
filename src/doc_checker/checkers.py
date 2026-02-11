@@ -155,33 +155,6 @@ class DriftDetector:
                 f"--ignore-submodules '{name}' did not match any subpackage"
             )
 
-    def _check_external_links(self, report: DriftReport, verbose: bool) -> None:
-        """Validate external HTTP/HTTPS links via async requests.
-
-        Uses LinkChecker with aiohttp (or urllib fallback). Broken links
-        appended to report.broken_external_links with status code/error.
-
-        Args:
-            report: DriftReport to append broken links to.
-            verbose: Print progress (link count, checking status).
-        """
-        if verbose:
-            print("Finding external links...")
-        links = self.md_parser.find_external_links()
-        report.total_external_links = len(links)
-        if verbose:
-            print(f"Found {len(links)} links, checking...")
-        for result in self.link_checker.check_links(links, verbose):
-            if result.is_broken:
-                report.broken_external_links.append(
-                    {
-                        "url": result.link.url,
-                        "status": result.status_code or result.error,
-                        "location": f"{result.link.file_path}:{result.link.line_number}",
-                        "text": result.link.text,
-                    }
-                )
-
     def _check_references(self, report: DriftReport) -> None:
         """Find mkdocstrings ::: refs that don't resolve to Python objects.
 
