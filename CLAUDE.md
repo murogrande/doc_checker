@@ -42,7 +42,7 @@ Source lives in `src/doc_checker/`.
 CLI (cli.py) -> DriftDetector (checkers.py) -> checkers_folder/*.py -> DriftReport (models.py) -> formatters.py
 ```
 
-Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`, `link_checker.py`, `llm_checker.py`.
+Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`, `link_checker.py`, `llm_checker.py`, `llm_backends.py` (OllamaBackend/OpenAIBackend), `prompts.py` (LLM prompt templates).
 
 **Checker hierarchy** (`checkers_folder/base.py`):
 - `Checker` — abstract base, `check(report)` mutates `DriftReport`
@@ -58,7 +58,9 @@ Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`
 - `nav_paths.py` — `NavPathsChecker(DocArtifactChecker)`: mkdocs.yml nav validation
 - `external_links.py` — `ExternalLinksChecker(DocArtifactChecker)`: HTTP link validation
 
-**Still in `checkers.py`**: `_check_quality` (LLM quality, lazily imports `QualityChecker`). `DriftDetector.check_all()` orchestrates all checkers.
+`checkers_folder/` has no `__init__.py`; checkers are imported directly in `checkers.py`.
+
+`DriftDetector.check_all()` orchestrates all checkers. `_check_quality` lazily imports `QualityChecker` to avoid hard deps on ollama/openai.
 
 **Key internals:**
 - `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; cached by `(module, ignore_submodules)` tuple
@@ -73,7 +75,7 @@ Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`
 
 ## Tests
 
-Tests use `tmp_path` fixtures in `conftest.py`. Each test creates isolated temp project structure with fake modules and docs. Test files mirror source modules.
+Tests use `tmp_path` fixtures in `conftest.py` (`tmp_docs`, `sample_markdown`, `sample_notebook`, `sample_mkdocs_yml`). Each test creates isolated temp project structure with fake modules and docs. Test files mirror source modules: `test_checkers.py`, `test_parsers.py`, `test_code_analyzer.py`, `test_link_checker.py`, `test_external_links.py`, `test_llm_checker.py`, `test_llm_backends.py`, `test_prompts.py`, `test_integration.py`.
 
 ## Config
 

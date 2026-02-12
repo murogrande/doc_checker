@@ -695,9 +695,7 @@ class TestQualityChecks:
         from unittest.mock import patch
 
         detector = DriftDetector(test_project, modules=["test_pkg"])
-
-        with patch("doc_checker.checkers.importlib.import_module") as mock_import:
-            mock_import.side_effect = ImportError("No module named 'ollama'")
+        with patch.dict("sys.modules", {"doc_checker.llm_checker": None}):
             report = detector.check_all(check_quality=True)
 
         # Should add warning, not crash

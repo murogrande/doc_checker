@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from doc_checker.checkers_folder.api_coverage import ApiCoverageChecker
+from doc_checker.checkers_folder.base import Checker
 from doc_checker.checkers_folder.doc_params import ParamDocsChecker
 from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
 from doc_checker.checkers_folder.external_links import ExternalLinksChecker
@@ -101,32 +102,42 @@ class DriftDetector:
                 "openai": "gpt-4o-mini",
             }.get(quality_backend)
         self._warn_unmatched_ignores(report)
+        checkers: list[Checker] = []
         if not skip_basic_checks:
-            ApiCoverageChecker(
-                self.code_analyzer,
-                self.modules,
-                self.ignore_submodules,
-                self.md_parser,
-                self.ignore_pulser_reexports,
-            ).check(report)
-            ReferencesChecker(md_parser=self.md_parser).check(report)
-            ParamDocsChecker(
-                self.code_analyzer, self.modules, self.ignore_submodules
-            ).check(report)
-            LocalLinksChecker(self.root_path, self.md_parser, self.yaml_parser).check(
-                report
-            )
-            DocstringsLinksChecker(
-                self.code_analyzer,
-                self.modules,
-                self.ignore_submodules,
-                self.root_path,
-                self.md_parser,
-            ).check(report)
-            NavPathsChecker(self.yaml_parser).check(report)
-
+            checkers += [
+                ApiCoverageChecker(
+                    self.code_analyzer,
+                    self.modules,
+                    self.ignore_submodules,
+                    self.md_parser,
+                    self.ignore_pulser_reexports,
+                ),
+                ReferencesChecker(md_parser=self.md_parser),
+                ParamDocsChecker(
+                    self.code_analyzer,
+                    self.modules,
+                    self.ignore_submodules,
+                ),
+                LocalLinksChecker(
+                    self.root_path,
+                    self.md_parser,
+                    self.yaml_parser,
+                ),
+                DocstringsLinksChecker(
+                    self.code_analyzer,
+                    self.modules,
+                    self.ignore_submodules,
+                    self.root_path,
+                    self.md_parser,
+                ),
+                NavPathsChecker(self.yaml_parser),
+            ]
         if check_external_links:
-            ExternalLinksChecker(self.md_parser, self.link_checker, verbose).check(report)
+            checkers.append(
+                ExternalLinksChecker(self.md_parser, self.link_checker, verbose)
+            )
+        for checker in checkers:
+            checker.check(report)
 
         if check_quality:
             self._check_quality(
