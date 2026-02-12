@@ -16,6 +16,7 @@ from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
 from doc_checker.checkers_folder.external_links import ExternalLinksChecker
 from doc_checker.checkers_folder.local_links import LocalLinksChecker
 from doc_checker.checkers_folder.nav_paths import NavPathsChecker
+from doc_checker.checkers_folder.quality import LLMQualityChecker
 from doc_checker.checkers_folder.references import ReferencesChecker
 from doc_checker.code_analyzer import CodeAnalyzer
 
@@ -25,19 +26,10 @@ from .parsers import MarkdownParser, YamlParser
 
 
 class DriftDetector:
-    """Detect documentation drift in a Python project.
+    """Orchestrates all doc drift checkers against a project.
 
-    Coordinates multiple checkers to find discrepancies between code and docs:
-    - Missing API documentation (public symbols not in mkdocstrings refs)
-    - Broken mkdocstrings ::: references (refs that don't resolve)
-    - Undocumented function parameters
-    - Broken local/external links in markdown, notebooks, docstrings
-    - Invalid mkdocs.yml nav paths
-    - Optional LLM-based docstring quality analysis
-
-    Attributes:
-        PULSER_REEXPORTS: Names to skip in coverage check (Pulser-specific).
-        IGNORE_PARAMS: Parameter names to skip in param doc check.
+    Instantiates checkers from checkers_folder/ based on flags passed
+    to check_all(), runs them sequentially, and returns a DriftReport.
     """
 
     def __init__(
@@ -98,8 +90,8 @@ class DriftDetector:
         if check_quality:
             report.llm_backend = quality_backend
             report.llm_model = quality_model or {
-                "ollama": "qwen2.5:3b",
-                "openai": "gpt-4o-mini",
+                "ollama": "qwen3:1.7b",
+                "openai": "gpt-5.2",
             }.get(quality_backend)
         self._warn_unmatched_ignores(report)
         checkers: list[Checker] = []
@@ -136,18 +128,22 @@ class DriftDetector:
             checkers.append(
                 ExternalLinksChecker(self.md_parser, self.link_checker, verbose)
             )
+        if check_quality:
+            checkers.append(
+                LLMQualityChecker(
+                    self.root_path,
+                    self.modules,
+                    self.ignore_submodules,
+                    quality_backend,
+                    quality_model,
+                    quality_api_key,
+                    quality_sample_rate,
+                    verbose,
+                )
+            )
         for checker in checkers:
             checker.check(report)
 
-        if check_quality:
-            self._check_quality(
-                report,
-                quality_backend,
-                quality_model,
-                quality_api_key,
-                quality_sample_rate,
-                verbose,
-            )
         return report
 
     def _warn_unmatched_ignores(self, report: DriftReport) -> None:
@@ -163,52 +159,4 @@ class DriftDetector:
         for name in sorted(unmatched):
             report.warnings.append(
                 f"--ignore-submodules '{name}' did not match any subpackage"
-            )
-
-    def _check_quality(
-        self,
-        report: DriftReport,
-        backend: str,
-        model: str | None,
-        api_key: str | None,
-        sample_rate: float,
-        verbose: bool,
-    ) -> None:
-        """Evaluate docstring quality using LLM.
-
-        Lazily imports QualityChecker to avoid hard deps. Supports ollama
-        (default: qwen2.5:3b) and openai (default: gpt-4o-mini) backends.
-        Issues appended to report.quality_issues.
-
-        Args:
-            report: DriftReport to append quality issues and warnings to.
-            backend: LLM backend ("ollama" or "openai").
-            model: Model name override, or None for backend default.
-            api_key: API key for openai backend (ignored for ollama).
-            sample_rate: Fraction of APIs to check (0.0-1.0).
-            verbose: Print progress (backend, model info).
-        """
-        try:
-            from .llm_checker import QualityChecker
-        except ImportError as e:
-            report.warnings.append(
-                f"Quality checks skipped: {e}. Install with: pip install doc-checker[llm]"
-            )
-            return
-        try:
-            checker = QualityChecker(
-                self.root_path,
-                backend,
-                model,
-                api_key,
-                ignore_submodules=self.ignore_submodules,
-            )
-        except (ImportError, RuntimeError, ValueError) as e:
-            report.warnings.append(f"Quality checks skipped: {e}")
-            return
-        if verbose:
-            print(f"LLM quality checks ({backend}, {checker.backend.model})...")
-        for module in self.modules:
-            report.quality_issues.extend(
-                checker.check_module_quality(module, verbose, sample_rate)
             )

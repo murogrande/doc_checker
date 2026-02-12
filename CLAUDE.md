@@ -57,10 +57,9 @@ Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`
 - `docstrings_links.py` — `DocstringsLinksChecker(ApiChecker)`: broken links in docstrings
 - `nav_paths.py` — `NavPathsChecker(DocArtifactChecker)`: mkdocs.yml nav validation
 - `external_links.py` — `ExternalLinksChecker(DocArtifactChecker)`: HTTP link validation
+- `quality.py` — `LLMQualityChecker(Checker)`: LLM docstring quality; lazily imports `QualityChecker` from `llm_checker.py` in `check()` to avoid hard deps on ollama/openai
 
-`checkers_folder/` has no `__init__.py`; checkers are imported directly in `checkers.py`.
-
-`DriftDetector.check_all()` orchestrates all checkers. `_check_quality` lazily imports `QualityChecker` to avoid hard deps on ollama/openai.
+`DriftDetector.check_all()` orchestrates all checkers; all imported at module level in `checkers.py`.
 
 **Key internals:**
 - `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; cached by `(module, ignore_submodules)` tuple

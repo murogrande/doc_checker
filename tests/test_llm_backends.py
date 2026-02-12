@@ -166,7 +166,7 @@ def test_get_backend_ollama_default(mock_ollama_class):
     backend = get_backend()
 
     assert backend == mock_backend
-    mock_ollama_class.assert_called_once_with("qwen2.5:3b")
+    mock_ollama_class.assert_called_once_with("qwen3:1.7b")
 
 
 @patch("doc_checker.llm_backends.OllamaBackend")
@@ -190,7 +190,7 @@ def test_get_backend_openai(mock_openai_class):
     backend = get_backend(backend_type="openai", api_key="test-key")
 
     assert backend == mock_backend
-    mock_openai_class.assert_called_once_with("gpt-4o-mini", "test-key")
+    mock_openai_class.assert_called_once_with("gpt-5.2", "test-key")
 
 
 @patch("doc_checker.llm_backends.OpenAIBackend")

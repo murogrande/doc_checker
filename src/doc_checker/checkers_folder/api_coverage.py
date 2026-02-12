@@ -31,6 +31,8 @@ def _is_api_documented(
 
 
 class ApiCoverageChecker(ApiChecker):
+    """Flag public APIs missing from mkdocstrings ::: refs."""
+
     def __init__(
         self,
         code_analyzer: CodeAnalyzer,
@@ -44,6 +46,7 @@ class ApiCoverageChecker(ApiChecker):
         self.ignore_pulser_reexports = ignore_pulser_reexports
 
     def setup(self, report: DriftReport) -> None:
+        """Build documented-names lookup from mkdocstrings refs."""
         refs = self.md_parser.find_mkdocstrings_refs()
         self.documented = {ref.reference for ref in refs}
         self.doc_names: dict[str, set[str]] = {m: set() for m in self.modules}
@@ -53,6 +56,7 @@ class ApiCoverageChecker(ApiChecker):
                 self.doc_names[parts[0]].update([parts[-1], ref])
 
     def check_api(self, api: SignatureInfo, report: DriftReport) -> None:
+        """Append undocumented API to report.missing_in_docs."""
         if self.ignore_pulser_reexports and api.name in PULSER_REEXPORTS:
             return
         if not _is_api_documented(api, self.documented, self.doc_names):

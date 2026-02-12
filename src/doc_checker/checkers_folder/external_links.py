@@ -20,9 +20,11 @@ class ExternalLinksChecker(DocArtifactChecker):
         self.verbose = verbose
 
     def collect(self) -> Iterator[Any]:
+        """Yield LinkCheckResults from async link validation."""
         yield from self.link_checker.check_links(self._links, self.verbose)
 
     def validate(self, result: LinkCheckResult, report: DriftReport) -> None:
+        """Append broken link to report.broken_external_links."""
         if result.is_broken:
             report.broken_external_links.append(
                 {
@@ -34,6 +36,7 @@ class ExternalLinksChecker(DocArtifactChecker):
             )
 
     def check(self, report: DriftReport) -> None:
+        """Find links, set total count, then run collect/validate loop."""
         if self.verbose:
             print("Finding external links...")
         self._links = self.md_parser.find_external_links()

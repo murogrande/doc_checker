@@ -17,6 +17,7 @@ class ParamDocsChecker(ApiChecker):
         super().__init__(code_analyzer, modules, ignore_submodules)
 
     def check_api(self, api: SignatureInfo, report: DriftReport) -> None:
+        """Append params not mentioned in docstring to report.undocumented_params."""
         if not api.docstring or not api.parameters:
             return  # Skip APIs without docstrings (caught by other checkers)
         undoc = [

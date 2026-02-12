@@ -10,14 +10,17 @@ from .base import DocArtifactChecker
 
 
 class ReferencesChecker(DocArtifactChecker):
+    """Detect broken mkdocstrings ::: references that don't resolve."""
 
     def __init__(self, md_parser: MarkdownParser):
         self.md_parser = md_parser
 
     def collect(self) -> Iterator[DocReference]:
+        """Yield all ::: refs from markdown files."""
         yield from self.md_parser.find_mkdocstrings_refs()
 
     def validate(self, item: DocReference, report: DriftReport) -> None:
+        """Append unresolvable ref to report.broken_references."""
         if not self._is_valid_reference(item.reference):
             report.broken_references.append(
                 f"{item.reference} in {item.file_path}:{item.line_number}"

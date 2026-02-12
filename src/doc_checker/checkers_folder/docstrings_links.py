@@ -28,6 +28,7 @@ class DocstringsLinksChecker(ApiChecker):
         self.refs: dict[str, Path] = {}
 
     def setup(self, report: DriftReport) -> None:
+        """Build ref→doc-page-dir map for resolving docstring links."""
         self.refs = {
             ref.reference: ref.file_path.parent
             for ref in self.md_parser.find_mkdocstrings_refs()
@@ -38,6 +39,7 @@ class DocstringsLinksChecker(ApiChecker):
                 self.refs.setdefault(short, parent_dir)
 
     def check_api(self, api: SignatureInfo, report: DriftReport) -> None:
+        """Parse local links from docstring, append broken ones to report."""
         if not api.docstring:
             return
         fqn = f"{api.module}.{api.name}"

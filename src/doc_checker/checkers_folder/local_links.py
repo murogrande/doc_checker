@@ -11,6 +11,7 @@ from .base import DocArtifactChecker
 
 
 class LocalLinksChecker(DocArtifactChecker):
+    """Detect broken local file links in markdown and notebooks."""
 
     def __init__(
         self, root_path: Path, md_parser: MarkdownParser, yaml_parser: YamlParser
@@ -20,9 +21,11 @@ class LocalLinksChecker(DocArtifactChecker):
         self.nav: set[str] | None = yaml_parser.get_nav_files()
 
     def collect(self) -> Iterator[LocalLink]:
+        """Yield all local links from markdown/notebook files."""
         yield from self.md_parser.find_local_links()
 
     def validate(self, link: LocalLink, report: DriftReport) -> None:
+        """Resolve link and append to report.broken_local_links if broken."""
         link_path = link.path.split("#")[0].rstrip("/")
         suffix, link_dir = link.file_path.suffix, link.file_path.parent
         resolved = self._resolve_path(link_dir, link_path, suffix)
