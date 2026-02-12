@@ -15,7 +15,9 @@ from doc_checker.checkers_folder.api_coverage import (
 )
 from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
 from doc_checker.checkers_folder.local_links import LocalLinksChecker
+from doc_checker.checkers_folder.references import ReferencesChecker
 from doc_checker.constants import IGNORE_PARAMS
+from doc_checker.models import DriftReport
 from doc_checker.parsers import MarkdownParser, YamlParser
 
 
@@ -547,6 +549,135 @@ class TestDocstringLocalLinks:
         finally:
             sys.modules.pop("reexp_pkg", None)
             sys.modules.pop("reexp_pkg.sub", None)
+
+
+class TestReferencesChecker:
+    """Unit tests for ReferencesChecker."""
+
+    def test_valid_stdlib_ref(self, tmp_path: Path):
+        """Valid stdlib reference not flagged."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: json.dumps\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_invalid_ref(self, tmp_path: Path):
+        """Nonexistent module.attr flagged as broken."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: nonexistent_pkg.Foo\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "nonexistent_pkg.Foo" in report.broken_references[0]
+
+    def test_valid_nested_attr(self, tmp_path: Path):
+        """Deeply nested attr (os.path.join) resolves."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: os.path.join\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_valid_module_invalid_attr(self, tmp_path: Path):
+        """Valid module but bad attr flagged."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: os.path.nonexistent_func\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "nonexistent_func" in report.broken_references[0]
+
+    def test_multiple_refs_mixed(self, tmp_path: Path):
+        """Mix of valid and invalid refs reports only broken ones."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "api.md").write_text(
+            "::: json.dumps\n\n::: fake_mod.X\n\n::: os.getcwd\n"
+        )
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "fake_mod.X" in report.broken_references[0]
+
+    def test_broken_ref_includes_location(self, tmp_path: Path):
+        """Broken ref message includes file path and line number."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "page.md").write_text("# Title\n\n::: bad.Ref\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "page.md" in report.broken_references[0]
+        assert ":3" in report.broken_references[0]
+
+    def test_no_refs_no_issues(self, tmp_path: Path):
+        """Doc with no ::: refs produces empty report."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Just text, no refs\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_user_module_ref(self, tmp_path: Path):
+        """Ref to a test module on sys.path resolves."""
+        mod = tmp_path / "ref_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text("class Foo: pass\n")
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "api.md").write_text("::: ref_pkg.Foo\n")
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+            report = DriftReport()
+            checker.check(report)
+
+            assert len(report.broken_references) == 0
+        finally:
+            sys.modules.pop("ref_pkg", None)
+
+    def test_does_not_mutate_other_report_fields(self, tmp_path: Path):
+        """Only broken_references is modified."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: fake.Missing\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.missing_in_docs) == 0
+        assert len(report.broken_local_links) == 0
+        assert len(report.broken_external_links) == 0
+        assert len(report.undocumented_params) == 0
 
 
 class TestQualityChecks:

@@ -39,41 +39,45 @@ doc-checker --modules my_pkg --check-basic --warn-only --root .
 Source lives in `src/doc_checker/`.
 
 ```
-CLI (cli.py) -> DriftDetector (checkers.py) -> {parsers, code_analyzer, link_checker, llm_checker} -> DriftReport (models.py) -> formatters.py
+CLI (cli.py) -> DriftDetector (checkers.py) -> checkers_folder/*.py -> DriftReport (models.py) -> formatters.py
 ```
 
-- `DriftDetector.check_all()` orchestrates all checks
-- `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; **cached** by `(module, ignore_submodules)` tuple
-- `MarkdownParser` uses **single-pass scanning**: `_ensure_scanned()` populates refs/external/local caches in one traversal
+Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`, `link_checker.py`, `llm_checker.py`.
+
+**Checker hierarchy** (`checkers_folder/base.py`):
+- `Checker` — abstract base, `check(report)` mutates `DriftReport`
+- `ApiChecker(Checker)` — iterates public APIs via `_iter_apis()`, subclasses implement `check_api()`
+- `DocArtifactChecker(Checker)` — iterates doc artifacts via `collect()`, subclasses implement `validate()`
+
+**Extracted checkers** (all in `checkers_folder/`):
+- `api_coverage.py` — `ApiCoverageChecker(ApiChecker)`: missing API docs
+- `references.py` — `ReferencesChecker(DocArtifactChecker)`: broken `:::` refs
+- `doc_params.py` — `ParamDocsChecker(ApiChecker)`: undocumented params
+- `local_links.py` — `LocalLinksChecker(DocArtifactChecker)`: broken file paths
+- `docstrings_links.py` — `DocstringsLinksChecker(ApiChecker)`: broken links in docstrings
+- `nav_paths.py` — `NavPathsChecker(DocArtifactChecker)`: mkdocs.yml nav validation
+- `external_links.py` — `ExternalLinksChecker(DocArtifactChecker)`: HTTP link validation
+
+**Still in `checkers.py`**: `_check_quality` (LLM quality, lazily imports `QualityChecker`). `DriftDetector.check_all()` orchestrates all checkers.
+
+**Key internals:**
+- `CodeAnalyzer.get_all_public_apis()` discovers APIs via `pkgutil.walk_packages()`; cached by `(module, ignore_submodules)` tuple
+- `MarkdownParser` uses single-pass scanning: `_ensure_scanned()` populates refs/external/local caches in one traversal
 - `LinkChecker` uses async aiohttp with urllib fallback; HEAD first, GET on 405; 403/429 accepted as not broken; concurrency capped at 5
-- `QualityChecker` lazily imported to avoid hard deps on ollama/openai
-
-**Reference validation** (`_is_valid_reference`): progressively imports dotted path — tries `importlib.import_module("a.b.c")`, then `"a.b"` + `getattr(mod, "c")`, etc. Returns True on first success.
-
-**Local link resolution** order: direct relative from file dir → `../` from docs root → absolute from project root → mkdocs URL-style with auto `.ipynb` extension.
-
-**Key behaviors:**
+- Reference validation (`ReferencesChecker._is_valid_reference`): progressively imports dotted path — tries `importlib.import_module("a.b.c")`, then `"a.b"` + `getattr(mod, "c")`, etc.
+- Local link resolution order: direct relative from file dir -> `../` from docs root -> absolute from project root -> mkdocs URL-style with auto `.ipynb` extension
+- `PULSER_REEXPORTS` and `IGNORE_PARAMS` live in `constants.py`
 - No check flags -> runs all checks; `--check-basic` skips external/quality
-- `--warn-only` always exits 0 (non-blocking for CI)
-- Docstring links resolve relative to the md file with the `:::` directive
+- `--warn-only` always exits 0
 - Notebook links: `.md` -> `.ipynb` required; `.ipynb` -> `.ipynb` forbidden
-
-**In-progress refactoring** (`mm/reafactor_checkers` branch): extracting `DriftDetector` methods into individual `Checker` subclasses under `src/doc_checker/checkers/`.
-
-Done so far:
-- `checkers/base.py`: three abstract bases — `Checker` (generic), `ApiChecker` (iterates public APIs), `DocArtifactChecker` (iterates doc artifacts)
-- `checkers/api_coverage.py`: `ApiCoverageChecker` extracted from `_check_api_coverage`
-
-Still in `checkers.py` (DriftDetector methods to extract): `_check_references`, `_check_param_docs`, `_check_local_links`, `_check_external_links`, `_check_quality`.
-
-**Known issue**: `PULSER_REEXPORTS` lives in `checkers.py` but `api_coverage.py` imports it from `checkers/__init__.py` (currently empty) — needs to be moved or re-exported.
 
 ## Tests
 
-Tests use `tmp_path` fixtures in `conftest.py`. Each test creates isolated temp project structure with fake modules and docs. Test files mirror source modules (e.g., `test_parsers.py`, `test_link_checker.py`, `test_checkers.py`).
+Tests use `tmp_path` fixtures in `conftest.py`. Each test creates isolated temp project structure with fake modules and docs. Test files mirror source modules.
 
 ## Config
 
 - line-length: 90 (black/ruff)
 - mypy: strict (excludes tests/, ignores ollama/openai imports)
+- pre-commit: black, ruff (--fix), mypy, trailing-whitespace, end-of-file-fixer
 - Python >=3.9

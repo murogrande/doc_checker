@@ -7,7 +7,6 @@ optional LLM-based quality analysis.
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 
 from doc_checker.checkers_folder.api_coverage import ApiCoverageChecker
@@ -16,6 +15,7 @@ from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
 from doc_checker.checkers_folder.external_links import ExternalLinksChecker
 from doc_checker.checkers_folder.local_links import LocalLinksChecker
 from doc_checker.checkers_folder.nav_paths import NavPathsChecker
+from doc_checker.checkers_folder.references import ReferencesChecker
 from doc_checker.code_analyzer import CodeAnalyzer
 
 from .link_checker import LinkChecker
@@ -109,7 +109,7 @@ class DriftDetector:
                 self.md_parser,
                 self.ignore_pulser_reexports,
             ).check(report)
-            self._check_references(report)
+            ReferencesChecker(md_parser=self.md_parser).check(report)
             ParamDocsChecker(
                 self.code_analyzer, self.modules, self.ignore_submodules
             ).check(report)
@@ -126,7 +126,6 @@ class DriftDetector:
             NavPathsChecker(self.yaml_parser).check(report)
 
         if check_external_links:
-            # self._check_external_links(report, verbose)
             ExternalLinksChecker(self.md_parser, self.link_checker, verbose).check(report)
 
         if check_quality:
@@ -154,41 +153,6 @@ class DriftDetector:
             report.warnings.append(
                 f"--ignore-submodules '{name}' did not match any subpackage"
             )
-
-    def _check_references(self, report: DriftReport) -> None:
-        """Find mkdocstrings ::: refs that don't resolve to Python objects.
-
-        Each ::: reference is validated via importlib to ensure the dotted
-        path actually exists. Broken refs appended to report.broken_references.
-        """
-        for ref in self.md_parser.find_mkdocstrings_refs():
-            if not self._is_valid_reference(ref.reference):
-                report.broken_references.append(
-                    f"{ref.reference} in {ref.file_path}:{ref.line_number}"
-                )
-
-    def _is_valid_reference(self, reference: str) -> bool:
-        """Check if dotted reference resolves to a Python object.
-
-        Tries progressively shorter module prefixes (a.b.c → a.b → a) then
-        getattr for remaining parts. Returns True if any combo succeeds.
-
-        Args:
-            reference: Dotted path like "pkg.module.Class.method".
-
-        Returns:
-            True if reference can be imported and resolved.
-        """
-        parts = reference.split(".")
-        for i in range(len(parts), 0, -1):
-            try:
-                mod = importlib.import_module(".".join(parts[:i]))
-                for attr in parts[i:]:
-                    mod = getattr(mod, attr)
-                return True
-            except (ImportError, AttributeError):
-                continue
-        return False
 
     def _check_quality(
         self,
