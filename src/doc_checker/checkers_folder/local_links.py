@@ -28,7 +28,12 @@ class LocalLinksChecker(DocArtifactChecker):
         """Resolve link and append to report.broken_local_links if broken."""
         link_path = link.path.split("#")[0].rstrip("/")
         suffix, link_dir = link.file_path.suffix, link.file_path.parent
-        resolved = self._resolve_path(link_dir, link_path, suffix)
+        resolved = LocalLinksChecker._resolve_path(
+            root_path=self.root_path,
+            link_dir=link_dir,
+            link_path=link_path,
+            suffix=suffix,
+        )
         if not resolved:
             report.broken_local_links.append(self._broken(link, link_path))
         elif suffix == ".ipynb" and link_path.endswith(".ipynb"):
@@ -44,7 +49,10 @@ class LocalLinksChecker(DocArtifactChecker):
             except ValueError:
                 pass
 
-    def _resolve_path(self, link_dir: Path, link_path: str, suffix: str) -> Path | None:
+    @staticmethod
+    def _resolve_path(
+        root_path: Path, link_dir: Path, link_path: str, suffix: str
+    ) -> Path | None:
         """Try multiple strategies to resolve a local link path.
 
         Resolution order: (1) direct relative from link's dir, (2) ../ from
@@ -59,7 +67,7 @@ class LocalLinksChecker(DocArtifactChecker):
         Returns:
             Resolved Path if file exists, None otherwise.
         """
-        docs = self.root_path / "docs"
+        docs = root_path / "docs"
         # Direct relative
         if (resolved := (link_dir / link_path).resolve()).exists():
             return resolved
@@ -72,7 +80,7 @@ class LocalLinksChecker(DocArtifactChecker):
         # Absolute from project root
         if (
             link_path.startswith("/")
-            and (resolved := (self.root_path / link_path.lstrip("/")).resolve()).exists()
+            and (resolved := (root_path / link_path.lstrip("/")).resolve()).exists()
         ):
             return resolved
         # mkdocs URL-style

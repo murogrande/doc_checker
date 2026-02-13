@@ -849,7 +849,7 @@ class TestHelperMethods:
         yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
         detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
 
-        result = detector_class._resolve_path(docs, "other.md", ".md")
+        result = detector_class._resolve_path(tmp_path, docs, "other.md", ".md")
 
         assert result is not None
         assert result.name == "other.md"
@@ -867,7 +867,7 @@ class TestHelperMethods:
         md_parser = MarkdownParser(docs)
         yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
         detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
-        result = detector_class._resolve_path(sub, "../index.md", ".md")
+        result = detector_class._resolve_path(tmp_path, sub, "../index.md", ".md")
 
         assert result is not None
         assert result.name == "index.md"
@@ -884,7 +884,7 @@ class TestHelperMethods:
         md_parser = MarkdownParser(docs)
         yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
         detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
-        result = detector_class._resolve_path(docs, "/script.py", ".md")
+        result = detector_class._resolve_path(tmp_path, docs, "/script.py", ".md")
 
         assert result is not None
         assert result.name == "script.py"
@@ -899,7 +899,7 @@ class TestHelperMethods:
         md_parser = MarkdownParser(docs)
         yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
         detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
-        result = detector_class._resolve_path(docs, "missing.md", ".md")
+        result = detector_class._resolve_path(tmp_path, docs, "missing.md", ".md")
 
         assert result is None
 
