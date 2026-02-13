@@ -48,11 +48,11 @@ class LLMBackend(ABC):
 class OllamaBackend(LLMBackend):
     """Ollama local LLM backend (default)."""
 
-    def __init__(self, model: str = "qwen2.5:3b"):
+    def __init__(self, model: str = "qwen3:1.7b"):
         """Initialize Ollama backend.
 
         Args:
-            model: Model name (qwen2.5:3b, llama3.2:3b, phi3.5, gemma2:2b)
+            model: Model name (qwen3:1.7b, llama3.2:3b, phi3.5, gemma2:2b)
 
         Raises:
             ImportError: If ollama package not installed
@@ -155,8 +155,8 @@ def get_backend(
         RuntimeError: If backend not available
     """
     if backend_type == "ollama":
-        return OllamaBackend(model or "qwen2.5:3b")
+        return OllamaBackend(model or "qwen3:1.7b")
     elif backend_type == "openai":
-        return OpenAIBackend(model or "gpt-4o-mini", api_key)
+        return OpenAIBackend(model or "gpt-5.2", api_key)
     else:
         raise ValueError(f"Unknown backend: {backend_type}. Choose from: ollama, openai")
