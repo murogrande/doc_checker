@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .code_analyzer import CodeAnalyzer
-from .llm_backends import get_backend
-from .models import QualityIssue
-from .prompts import get_combined_quality_prompt
+from doc_checker.llm_backends import get_backend
+from doc_checker.models import QualityIssue
+from doc_checker.prompts import get_combined_quality_prompt
+from doc_checker.utils.code_analyzer import CodeAnalyzer
 
 
 class QualityChecker:

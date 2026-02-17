@@ -44,10 +44,10 @@ doc-checker --modules my_package --check-basic --root /path/to/project
 # External HTTP link validation only (slow)
 doc-checker --modules my_package --check-external-links --root /path/to/project
 
-# LLM quality checks (default: ollama/qwen2.5:3b, openai/gpt-4o-mini)
+# LLM quality checks (default: ollama/qwen3:1.7b, openai/gpt-5.2)
 doc-checker --modules my_package --check-quality --root /path/to/project
 doc-checker --modules my_package --check-quality --llm-backend openai --root .
-doc-checker --modules my_package --check-quality --llm-model gpt-4o --root .
+doc-checker --modules my_package --check-quality --llm-model gpt-5.2 --root .
 doc-checker --modules my_package --check-quality --quality-sample 0.1 --root .
 
 # Multiple modules
@@ -100,7 +100,7 @@ CLI -> DriftDetector -> {parsers, code_analyzer, link_checker, llm_checker} -> D
 ```
 
 **Modules:**
-- `checkers.py` - DriftDetector orchestrates all checks
+- `checkers.py` - DriftDetector orchestrates checkers from `checkers_folder/`
 - `parsers.py` - MarkdownParser (single-pass scan, cached) / YamlParser
 - `code_analyzer.py` - Introspect Python modules via importlib/inspect (cached)
 - `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)

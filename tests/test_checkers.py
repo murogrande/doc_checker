@@ -9,7 +9,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from doc_checker.checkers import DriftDetector
+from doc_checker.checkers import CodeAnalyzer, DriftDetector
+from doc_checker.checkers_folder.api_coverage import (
+    _is_api_documented,
+)
+from doc_checker.checkers_folder.docstrings_links import DocstringsLinksChecker
+from doc_checker.checkers_folder.local_links import LocalLinksChecker
+from doc_checker.checkers_folder.references import ReferencesChecker
+from doc_checker.constants import IGNORE_PARAMS
+from doc_checker.models import DriftReport
+from doc_checker.utils.parsers import MarkdownParser, YamlParser
 
 
 @pytest.fixture
@@ -542,6 +551,135 @@ class TestDocstringLocalLinks:
             sys.modules.pop("reexp_pkg.sub", None)
 
 
+class TestReferencesChecker:
+    """Unit tests for ReferencesChecker."""
+
+    def test_valid_stdlib_ref(self, tmp_path: Path):
+        """Valid stdlib reference not flagged."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: json.dumps\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_invalid_ref(self, tmp_path: Path):
+        """Nonexistent module.attr flagged as broken."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: nonexistent_pkg.Foo\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "nonexistent_pkg.Foo" in report.broken_references[0]
+
+    def test_valid_nested_attr(self, tmp_path: Path):
+        """Deeply nested attr (os.path.join) resolves."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: os.path.join\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_valid_module_invalid_attr(self, tmp_path: Path):
+        """Valid module but bad attr flagged."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: os.path.nonexistent_func\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "nonexistent_func" in report.broken_references[0]
+
+    def test_multiple_refs_mixed(self, tmp_path: Path):
+        """Mix of valid and invalid refs reports only broken ones."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "api.md").write_text(
+            "::: json.dumps\n\n::: fake_mod.X\n\n::: os.getcwd\n"
+        )
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "fake_mod.X" in report.broken_references[0]
+
+    def test_broken_ref_includes_location(self, tmp_path: Path):
+        """Broken ref message includes file path and line number."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "page.md").write_text("# Title\n\n::: bad.Ref\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 1
+        assert "page.md" in report.broken_references[0]
+        assert ":3" in report.broken_references[0]
+
+    def test_no_refs_no_issues(self, tmp_path: Path):
+        """Doc with no ::: refs produces empty report."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("# Just text, no refs\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.broken_references) == 0
+
+    def test_user_module_ref(self, tmp_path: Path):
+        """Ref to a test module on sys.path resolves."""
+        mod = tmp_path / "ref_pkg"
+        mod.mkdir()
+        (mod / "__init__.py").write_text("class Foo: pass\n")
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "api.md").write_text("::: ref_pkg.Foo\n")
+
+        sys.path.insert(0, str(tmp_path))
+        try:
+            checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+            report = DriftReport()
+            checker.check(report)
+
+            assert len(report.broken_references) == 0
+        finally:
+            sys.modules.pop("ref_pkg", None)
+
+    def test_does_not_mutate_other_report_fields(self, tmp_path: Path):
+        """Only broken_references is modified."""
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        (docs / "index.md").write_text("::: fake.Missing\n")
+
+        checker = ReferencesChecker(md_parser=MarkdownParser(docs))
+        report = DriftReport()
+        checker.check(report)
+
+        assert len(report.missing_in_docs) == 0
+        assert len(report.broken_local_links) == 0
+        assert len(report.broken_external_links) == 0
+        assert len(report.undocumented_params) == 0
+
+
 class TestQualityChecks:
     """Tests for LLM quality checks integration."""
 
@@ -557,9 +695,7 @@ class TestQualityChecks:
         from unittest.mock import patch
 
         detector = DriftDetector(test_project, modules=["test_pkg"])
-
-        with patch("doc_checker.checkers.importlib.import_module") as mock_import:
-            mock_import.side_effect = ImportError("No module named 'ollama'")
+        with patch.dict("sys.modules", {"doc_checker.llm_checker": None}):
             report = detector.check_all(check_quality=True)
 
         # Should add warning, not crash
@@ -657,29 +793,29 @@ class TestHelperMethods:
 
     def test_is_api_documented_by_short_name(self, test_project: Path):
         """Test _is_api_documented finds API by short name."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="TestClass", module="test_pkg")
         api.name = "TestClass"
 
         documented = {"test_pkg.TestClass"}
         documented_names = {"test_pkg": {"TestClass", "test_pkg.TestClass"}}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_by_full_path(self, test_project: Path):
         """Test _is_api_documented finds API by full module.name path."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="Helper", module="test_pkg.sub")
         api.name = "Helper"
 
         documented = {"test_pkg.sub.Helper"}
         documented_names = {"test_pkg": set()}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_by_suffix(self, test_project: Path):
         """Test _is_api_documented finds API by ref ending with .name."""
-        detector = DriftDetector(test_project, modules=["pkg"])
+        # detector = DriftDetector(test_project, modules=["pkg"])
         api = MagicMock(name="Widget", module="pkg")
         api.name = "Widget"
 
@@ -687,18 +823,18 @@ class TestHelperMethods:
         documented = {"some.other.path.Widget"}
         documented_names = {"pkg": set()}
 
-        assert detector._is_api_documented(api, documented, documented_names) is True
+        assert _is_api_documented(api, documented, documented_names) is True
 
     def test_is_api_documented_not_found(self, test_project: Path):
         """Test _is_api_documented returns False when not documented."""
-        detector = DriftDetector(test_project, modules=["test_pkg"])
+        # detector = DriftDetector(test_project, modules=["test_pkg"])
         api = MagicMock(name="Missing", module="test_pkg")
         api.name = "Missing"
 
         documented = {"test_pkg.Other"}
         documented_names = {"test_pkg": {"Other"}}
 
-        assert detector._is_api_documented(api, documented, documented_names) is False
+        assert _is_api_documented(api, documented, documented_names) is False
 
     def test_resolve_path_direct_relative(self, tmp_path: Path):
         """Test _resolve_path finds direct relative paths."""
@@ -709,8 +845,11 @@ class TestHelperMethods:
         (docs / "other.md").write_text("# Other")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: page.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "other.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+
+        result = detector_class._resolve_path(tmp_path, docs, "other.md", ".md")
 
         assert result is not None
         assert result.name == "other.md"
@@ -724,9 +863,11 @@ class TestHelperMethods:
         (sub / "page.md").write_text("# Page")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
         # From sub/, link to ../index.md
-        result = detector._resolve_path(sub, "../index.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(tmp_path, sub, "../index.md", ".md")
 
         assert result is not None
         assert result.name == "index.md"
@@ -740,8 +881,10 @@ class TestHelperMethods:
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
         (docs / "index.md").write_text("# Index")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "/script.py", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(tmp_path, docs, "/script.py", ".md")
 
         assert result is not None
         assert result.name == "script.py"
@@ -753,8 +896,10 @@ class TestHelperMethods:
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
         (docs / "index.md").write_text("# Index")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_path(docs, "missing.md", ".md")
+        md_parser = MarkdownParser(docs)
+        yaml_parser = YamlParser(docs, tmp_path / "mkdocs.yml")
+        detector_class = LocalLinksChecker(tmp_path, md_parser, yaml_parser)
+        result = detector_class._resolve_path(tmp_path, docs, "missing.md", ".md")
 
         assert result is None
 
@@ -765,8 +910,16 @@ class TestHelperMethods:
         (docs / "guide.md").write_text("# Guide")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_ds_link("guide.md", docs, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+        result = detector_class._resolve_ds_link("guide.md", docs, docs)
 
         assert result is not None
         assert result.name == "guide.md"
@@ -779,9 +932,17 @@ class TestHelperMethods:
         (docs / "guide.md").write_text("# Guide")
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: guide.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
         # Link from api/ to ../guide.md
-        result = detector._resolve_ds_link("../guide.md", sub, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+        result = detector_class._resolve_ds_link("../guide.md", sub, docs)
 
         assert result is not None
         assert result.name == "guide.md"
@@ -792,13 +953,22 @@ class TestHelperMethods:
         docs.mkdir()
         (tmp_path / "mkdocs.yml").write_text("nav:\n  - Home: index.md\n")
 
-        detector = DriftDetector(tmp_path, modules=[])
-        result = detector._resolve_ds_link("missing.md", docs, docs)
+        code_analizer = CodeAnalyzer(tmp_path)
+        md_parser = MarkdownParser(docs)
+        detector_class = DocstringsLinksChecker(
+            code_analyzer=code_analizer,
+            modules=[],
+            ignore_submodules=[],
+            root_path=tmp_path,
+            md_parser=md_parser,
+        )
+
+        result = detector_class._resolve_ds_link("missing.md", docs, docs)
 
         assert result is None
 
     def test_ignore_params_class_constant(self, test_project: Path):
         """Test IGNORE_PARAMS is accessible as class constant."""
-        assert "cls" in DriftDetector.IGNORE_PARAMS
-        assert "value" in DriftDetector.IGNORE_PARAMS
-        assert "self" not in DriftDetector.IGNORE_PARAMS  # self not in list
+        assert "cls" in IGNORE_PARAMS
+        assert "value" in IGNORE_PARAMS
+        assert "self" not in IGNORE_PARAMS  # self not in list
