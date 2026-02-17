@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Iterator
 
-from doc_checker.code_analyzer import CodeAnalyzer
 from doc_checker.models import DriftReport, SignatureInfo
+from doc_checker.utils.code_analyzer import CodeAnalyzer
 
 
 class Checker(ABC):

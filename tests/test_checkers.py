@@ -18,7 +18,7 @@ from doc_checker.checkers_folder.local_links import LocalLinksChecker
 from doc_checker.checkers_folder.references import ReferencesChecker
 from doc_checker.constants import IGNORE_PARAMS
 from doc_checker.models import DriftReport
-from doc_checker.parsers import MarkdownParser, YamlParser
+from doc_checker.utils.parsers import MarkdownParser, YamlParser
 
 
 @pytest.fixture

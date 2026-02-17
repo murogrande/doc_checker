@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterator
 
 from doc_checker.models import DriftReport
-from doc_checker.parsers import YamlParser
+from doc_checker.utils.parsers import YamlParser
 
 from .base import DocArtifactChecker
 

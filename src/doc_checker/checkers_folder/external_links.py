@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
-from doc_checker.link_checker import LinkChecker
 from doc_checker.models import DriftReport, LinkCheckResult
-from doc_checker.parsers import MarkdownParser
+from doc_checker.utils.link_checker import LinkChecker
+from doc_checker.utils.parsers import MarkdownParser
 
 from .base import DocArtifactChecker
 

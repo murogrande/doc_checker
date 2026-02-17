@@ -18,11 +18,11 @@ from doc_checker.checkers_folder.local_links import LocalLinksChecker
 from doc_checker.checkers_folder.nav_paths import NavPathsChecker
 from doc_checker.checkers_folder.quality import LLMQualityChecker
 from doc_checker.checkers_folder.references import ReferencesChecker
-from doc_checker.code_analyzer import CodeAnalyzer
+from doc_checker.utils.code_analyzer import CodeAnalyzer
+from doc_checker.utils.link_checker import LinkChecker
+from doc_checker.utils.parsers import MarkdownParser, YamlParser
 
-from .link_checker import LinkChecker
 from .models import DriftReport
-from .parsers import MarkdownParser, YamlParser
 
 
 class DriftDetector:

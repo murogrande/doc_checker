@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from doc_checker.link_checker import LinkChecker
 from doc_checker.models import ExternalLink
+from doc_checker.utils.link_checker import LinkChecker
 
 try:
     import aiohttp  # noqa: F401
@@ -183,7 +183,7 @@ class TestCheckLinksPublicAPI:
 
         with (
             patch.object(checker, "_check_sync", return_value=[]) as mock_sync,
-            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+            patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False),
         ):
             results = checker.check_links(sample_links[:1], verbose=False)
 
@@ -228,7 +228,7 @@ class TestCheckLinksPublicAPI:
             mock_response.getcode.return_value = 200
             mock_urlopen.return_value.__enter__.return_value = mock_response
 
-            with patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False):
+            with patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False):
                 results = checker.check_links([skip_link], verbose=False)
 
             # Slack URL should be skipped, no request made
@@ -243,7 +243,7 @@ class TestCheckLinksPublicAPI:
 
         with (
             patch("urllib.request.urlopen") as mock_urlopen,
-            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+            patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False),
         ):
             mock_urlopen.side_effect = urllib.error.URLError("timed out")
             results = checker.check_links(sample_links[:1], verbose=False)
@@ -260,7 +260,7 @@ class TestCheckLinksPublicAPI:
 
         with (
             patch("urllib.request.urlopen") as mock_urlopen,
-            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+            patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False),
         ):
             mock_urlopen.side_effect = urllib.error.URLError("Connection refused")
             results = checker.check_links(sample_links[:1], verbose=False)
@@ -277,7 +277,7 @@ class TestCheckLinksPublicAPI:
 
         with (
             patch("urllib.request.urlopen") as mock_urlopen,
-            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+            patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False),
         ):
             mock_urlopen.side_effect = urllib.error.HTTPError(
                 sample_links[0].url, 403, "Forbidden", {}, None
@@ -294,7 +294,7 @@ class TestCheckLinksPublicAPI:
 
         with (
             patch("urllib.request.urlopen") as mock_urlopen,
-            patch("doc_checker.link_checker.AIOHTTP_AVAILABLE", False),
+            patch("doc_checker.utils.link_checker.AIOHTTP_AVAILABLE", False),
         ):
             mock_response = MagicMock()
             mock_response.getcode.return_value = 200

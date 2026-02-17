@@ -5,7 +5,7 @@ from typing import Iterator
 
 from doc_checker import DriftReport
 from doc_checker.models import BrokenLinkInfo, LocalLink
-from doc_checker.parsers import MarkdownParser, YamlParser
+from doc_checker.utils.parsers import MarkdownParser, YamlParser
 
 from .base import DocArtifactChecker
 

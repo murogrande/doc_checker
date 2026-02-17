@@ -8,7 +8,7 @@ from types import ModuleType
 
 import pytest
 
-from doc_checker.code_analyzer import CodeAnalyzer
+from doc_checker.utils.code_analyzer import CodeAnalyzer
 
 
 @pytest.fixture

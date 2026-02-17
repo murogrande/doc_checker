@@ -4,7 +4,7 @@ import importlib
 from typing import Iterator
 
 from doc_checker.models import DocReference, DriftReport
-from doc_checker.parsers import MarkdownParser
+from doc_checker.utils.parsers import MarkdownParser
 
 from .base import DocArtifactChecker
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from doc_checker.parsers import MarkdownParser, YamlParser
+from doc_checker.utils.parsers import MarkdownParser, YamlParser
 
 
 class TestMarkdownParser:

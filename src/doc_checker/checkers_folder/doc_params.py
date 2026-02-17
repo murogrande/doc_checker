@@ -1,6 +1,6 @@
-from doc_checker.code_analyzer import CodeAnalyzer
 from doc_checker.constants import IGNORE_PARAMS
 from doc_checker.models import DriftReport, SignatureInfo
+from doc_checker.utils.code_analyzer import CodeAnalyzer
 
 from .base import ApiChecker
 

@@ -1,7 +1,7 @@
-from doc_checker.code_analyzer import CodeAnalyzer
 from doc_checker.constants import PULSER_REEXPORTS
 from doc_checker.models import DriftReport, SignatureInfo
-from doc_checker.parsers import MarkdownParser
+from doc_checker.utils.code_analyzer import CodeAnalyzer
+from doc_checker.utils.parsers import MarkdownParser
 
 from .base import ApiChecker
 
