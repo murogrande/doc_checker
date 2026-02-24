@@ -42,7 +42,7 @@ Source lives in `src/doc_checker/`.
 CLI (cli.py) -> DriftDetector (checkers.py) -> checkers_folder/*.py -> DriftReport (models.py) -> formatters.py
 ```
 
-Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`, `link_checker.py`, `llm_checker.py`, `llm_backends.py` (OllamaBackend/OpenAIBackend), `prompts.py` (LLM prompt templates).
+Supporting modules: `utils/parsers.py` (MarkdownParser/YamlParser), `utils/code_analyzer.py`, `utils/link_checker.py`, `llm_backends.py` (OllamaBackend/OpenAIBackend), `prompts.py` (LLM prompt templates).
 
 **Checker hierarchy** (`checkers_folder/base.py`):
 - `Checker` — abstract base, `check(report)` mutates `DriftReport`
@@ -57,7 +57,7 @@ Supporting modules: `parsers.py` (MarkdownParser/YamlParser), `code_analyzer.py`
 - `docstrings_links.py` — `DocstringsLinksChecker(ApiChecker)`: broken links in docstrings
 - `nav_paths.py` — `NavPathsChecker(DocArtifactChecker)`: mkdocs.yml nav validation
 - `external_links.py` — `ExternalLinksChecker(DocArtifactChecker)`: HTTP link validation
-- `quality.py` — `LLMQualityChecker(Checker)`: LLM docstring quality; lazily imports `QualityChecker` from `llm_checker.py` in `check()` to avoid hard deps on ollama/openai
+- `quality.py` — `LLMQualityChecker(Checker)` + `QualityChecker`: LLM docstring quality; catches ImportError/RuntimeError to skip gracefully when ollama/openai not installed
 
 `DriftDetector.check_all()` orchestrates all checkers; all imported at module level in `checkers.py`.
 

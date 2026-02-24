@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from doc_checker.llm_checker import QualityChecker
+from doc_checker.checkers_folder.quality import QualityChecker
 from doc_checker.models import SignatureInfo
 
 
@@ -60,8 +60,8 @@ def mock_code_analyzer(tmp_path: Path):
     return analyzer
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_init(mock_analyzer_class, mock_get_backend, tmp_path):
     """Test QualityChecker initialization."""
     mock_backend = MagicMock()
@@ -78,8 +78,8 @@ def test_quality_checker_init(mock_analyzer_class, mock_get_backend, tmp_path):
     mock_analyzer_class.assert_called_once_with(tmp_path)
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_check_api_quality_success(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend, mock_code_analyzer
 ):
@@ -99,8 +99,8 @@ def test_quality_checker_check_api_quality_success(
     assert issues[0].line_reference == "test text"
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_api_not_found(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend, mock_code_analyzer
 ):
@@ -117,8 +117,8 @@ def test_quality_checker_api_not_found(
     assert "not found" in issues[0].message
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_no_docstring(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend, mock_code_analyzer
 ):
@@ -135,8 +135,8 @@ def test_quality_checker_no_docstring(
     assert "No docstring" in issues[0].message
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_llm_failure(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_code_analyzer
 ):
@@ -155,8 +155,8 @@ def test_quality_checker_llm_failure(
     assert "LLM check failed" in issues[0].message
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_verbose_output(
     mock_analyzer_class,
     mock_get_backend,
@@ -178,8 +178,8 @@ def test_quality_checker_verbose_output(
     assert "score: 85" in captured.out
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_check_module_quality(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend, mock_code_analyzer
 ):
@@ -197,8 +197,8 @@ def test_quality_checker_check_module_quality(
     assert "test_module.no_docstring_func" in names
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_sample_rate(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend
 ):
@@ -231,8 +231,8 @@ def test_quality_checker_sample_rate(
     assert 1 <= len(issues) <= 5  # Allow some variance due to random sampling
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_multiple_issues(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_code_analyzer
 ):
@@ -277,8 +277,8 @@ def test_quality_checker_multiple_issues(
     assert issues[2].severity == "suggestion"
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_no_issues(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_code_analyzer
 ):
@@ -298,8 +298,8 @@ def test_quality_checker_no_issues(
     assert len(issues) == 0
 
 
-@patch("doc_checker.llm_checker.get_backend")
-@patch("doc_checker.llm_checker.CodeAnalyzer")
+@patch("doc_checker.checkers_folder.quality.get_backend")
+@patch("doc_checker.checkers_folder.quality.CodeAnalyzer")
 def test_quality_checker_empty_module(
     mock_analyzer_class, mock_get_backend, tmp_path, mock_backend
 ):

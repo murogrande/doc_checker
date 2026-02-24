@@ -695,7 +695,7 @@ class TestQualityChecks:
         from unittest.mock import patch
 
         detector = DriftDetector(test_project, modules=["test_pkg"])
-        with patch.dict("sys.modules", {"doc_checker.llm_checker": None}):
+        with patch.dict("sys.modules", {"doc_checker.checkers_folder.quality": None}):
             report = detector.check_all(check_quality=True)
 
         # Should add warning, not crash
@@ -721,7 +721,9 @@ class TestQualityChecks:
             )
         ]
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+        with patch(
+            "doc_checker.checkers_folder.quality.QualityChecker"
+        ) as mock_checker_class:
             mock_checker_class.return_value = mock_checker
             report = detector.check_all(
                 check_quality=True,
@@ -741,7 +743,9 @@ class TestQualityChecks:
         mock_checker = MagicMock()
         mock_checker.check_module_quality.return_value = []
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+        with patch(
+            "doc_checker.checkers_folder.quality.QualityChecker"
+        ) as mock_checker_class:
             mock_checker_class.return_value = mock_checker
             detector.check_all(check_quality=True, quality_sample_rate=0.5, verbose=True)
 
@@ -754,7 +758,9 @@ class TestQualityChecks:
 
         detector = DriftDetector(test_project, modules=["test_pkg"])
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+        with patch(
+            "doc_checker.checkers_folder.quality.QualityChecker"
+        ) as mock_checker_class:
             mock_checker_class.side_effect = RuntimeError("Ollama not running")
             report = detector.check_all(check_quality=True)
 
@@ -780,7 +786,9 @@ class TestQualityChecks:
             )
         ]
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+        with patch(
+            "doc_checker.checkers_folder.quality.QualityChecker"
+        ) as mock_checker_class:
             mock_checker_class.return_value = mock_checker
             report = detector.check_all(check_quality=True)
 

@@ -213,7 +213,9 @@ def test_integration_with_quality_checks_mocked(integration_project: Path):
 
     detector = DriftDetector(integration_project, modules=["my_lib"])
 
-    with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+    with patch(
+        "doc_checker.checkers_folder.quality.QualityChecker"
+    ) as mock_checker_class:
         mock_checker_class.return_value = mock_checker
         report = detector.check_all(check_quality=True, verbose=False)
 
@@ -305,7 +307,9 @@ def test_integration_json_output(integration_project: Path):
         )
     ]
 
-    with patch("doc_checker.llm_checker.QualityChecker") as mock_checker_class:
+    with patch(
+        "doc_checker.checkers_folder.quality.QualityChecker"
+    ) as mock_checker_class:
         mock_checker_class.return_value = mock_checker
         report = detector.check_all(check_quality=True)
 
@@ -404,7 +408,7 @@ class TestCLIBehavior:
         mock_checker = MagicMock()
         mock_checker.check_module_quality.return_value = []
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_cls:
+        with patch("doc_checker.checkers_folder.quality.QualityChecker") as mock_cls:
             mock_cls.return_value = mock_checker
             # Simulate --check-quality: basic + quality, no external
             report = detector.check_all(
@@ -429,7 +433,7 @@ class TestCLIBehavior:
         mock_checker = MagicMock()
         mock_checker.check_module_quality.return_value = []
 
-        with patch("doc_checker.llm_checker.QualityChecker") as mock_cls:
+        with patch("doc_checker.checkers_folder.quality.QualityChecker") as mock_cls:
             mock_cls.return_value = mock_checker
             report = detector.check_all(
                 check_external_links=True,
