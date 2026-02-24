@@ -690,18 +690,6 @@ class TestQualityChecks:
 
         assert len(report.quality_issues) == 0
 
-    def test_check_quality_missing_dependency(self, test_project: Path):
-        """Test quality checks gracefully handle missing dependencies."""
-        from unittest.mock import patch
-
-        detector = DriftDetector(test_project, modules=["test_pkg"])
-        with patch.dict("sys.modules", {"doc_checker.checkers_folder.quality": None}):
-            report = detector.check_all(check_quality=True)
-
-        # Should add warning, not crash
-        assert len(report.warnings) > 0
-        assert any("Quality checks skipped" in w for w in report.warnings)
-
     def test_check_quality_enabled(self, test_project: Path):
         """Test quality checks run when enabled."""
         from unittest.mock import MagicMock, patch

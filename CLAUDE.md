@@ -14,6 +14,7 @@ pip install -e ".[dev]"           # all dev deps (recommended)
 pip install -e ".[async]"         # async link checking (aiohttp)
 pip install -e ".[llm]"           # LLM quality (ollama)
 pip install -e ".[llm-openai]"    # LLM quality (openai)
+pip install -e ".[llm-all]"       # LLM quality (ollama + openai)
 
 # Tests
 pytest                            # all
