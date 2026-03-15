@@ -10,6 +10,7 @@ Check documentation drift: broken links, undocumented APIs, invalid references.
 - **Reference Validation**: Check `::: module.Class` references resolve to valid Python objects
 - **Link Checking**: Verify external HTTP links (async)
 - **Local Links**: Validate file paths in markdown/notebooks and Python docstrings
+- **Docstring Links**: Validate links embedded in Python docstrings
 - **Parameter Docs**: Check function parameters mentioned in docstrings
 - **mkdocs.yml Validation**: Verify nav paths exist
 - **LLM Quality Checks**: Evaluate docstring quality (english, code-alignment, completeness)
@@ -29,6 +30,7 @@ pip install -e .
 pip install -e ".[async]"         # async link checking (recommended)
 pip install -e ".[llm]"           # LLM quality checks (ollama)
 pip install -e ".[llm-openai]"    # LLM quality checks (openai)
+pip install -e ".[llm-all]"       # LLM quality checks (ollama + openai)
 pip install -e ".[dev]"           # all dev dependencies
 ```
 
@@ -38,16 +40,19 @@ pip install -e ".[dev]"           # all dev dependencies
 # All checks (basic + external links + LLM quality)
 doc-checker --modules my_package --root /path/to/project
 
+# Explicitly run all checks
+doc-checker --modules my_package --check-all --root /path/to/project
+
 # Basic checks only (API coverage, references, params, local links, mkdocs)
 doc-checker --modules my_package --check-basic --root /path/to/project
 
 # External HTTP link validation only (slow)
 doc-checker --modules my_package --check-external-links --root /path/to/project
 
-# LLM quality checks (default: ollama/qwen2.5:3b, openai/gpt-4o-mini)
+# LLM quality checks (default: ollama/qwen3:1.7b, openai/gpt-5.2)
 doc-checker --modules my_package --check-quality --root /path/to/project
 doc-checker --modules my_package --check-quality --llm-backend openai --root .
-doc-checker --modules my_package --check-quality --llm-model gpt-4o --root .
+doc-checker --modules my_package --check-quality --llm-model gpt-5.2 --root .
 doc-checker --modules my_package --check-quality --quality-sample 0.1 --root .
 
 # Multiple modules
@@ -55,6 +60,9 @@ doc-checker --modules my_package other_pkg --root /path/to/project
 
 # Skip specific submodules (fully qualified paths)
 doc-checker --modules my_package --ignore-submodules my_package.internal --root .
+
+# Skip Pulser re-exported APIs
+doc-checker --modules my_package --ignore-pulser-reexports --root .
 
 # JSON output
 doc-checker --modules my_package --json --root /path/to/project
@@ -96,15 +104,23 @@ Use `--warn-only` for non-blocking checks:
 ## Architecture
 
 ```
-CLI -> DriftDetector -> {parsers, code_analyzer, link_checker, llm_checker} -> DriftReport -> formatters
+CLI -> DriftDetector -> checkers_folder/ -> DriftReport -> formatters
+                            |
+                            ├── utils/parsers.py      (MarkdownParser, YamlParser)
+                            ├── utils/code_analyzer.py (CodeAnalyzer)
+                            ├── utils/link_checker.py  (async HTTP)
+                            ├── llm_backends.py        (OllamaBackend, OpenAIBackend)
+                            └── prompts.py             (LLM prompt templates)
 ```
 
 **Modules:**
-- `checkers.py` - DriftDetector orchestrates all checks
-- `parsers.py` - MarkdownParser (single-pass scan, cached) / YamlParser
-- `code_analyzer.py` - Introspect Python modules via importlib/inspect (cached)
-- `link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
-- `llm_checker.py` - QualityChecker for LLM docstring evaluation
+- `checkers.py` - DriftDetector orchestrates checkers from `checkers_folder/`
+- `checkers_folder/` - Individual checker implementations (ApiCoverageChecker, ReferencesChecker, ParamDocsChecker, LocalLinksChecker, DocstringsLinksChecker, NavPathsChecker, ExternalLinksChecker, LLMQualityChecker)
+- `utils/parsers.py` - MarkdownParser (single-pass scan, cached) / YamlParser
+- `utils/code_analyzer.py` - Introspect Python modules via importlib/inspect (cached)
+- `utils/link_checker.py` - Async HTTP validation (aiohttp or urllib fallback)
+- `llm_backends.py` - OllamaBackend / OpenAIBackend abstraction
+- `prompts.py` - LLM prompt templates
 - `models.py` - Dataclasses (SignatureInfo, DocReference, DriftReport, etc.)
 - `formatters.py` - Report rendering (text/JSON)
 - `cli.py` - Command-line interface

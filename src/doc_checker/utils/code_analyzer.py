@@ -8,7 +8,7 @@ import pkgutil
 from pathlib import Path
 from typing import Any
 
-from .models import SignatureInfo
+from doc_checker.models import SignatureInfo
 
 
 class CodeAnalyzer:
@@ -28,6 +28,13 @@ class CodeAnalyzer:
         self._api_cache: dict[
             tuple[str, frozenset[str]], tuple[list[SignatureInfo], set[str]]
         ] = {}
+
+    # def _iter_apis(self) -> Iterator[SignatureInfo]:
+    #     for module in self.modules:
+    #         apis, _ = self.code_analyzer.get_all_public_apis(
+    #             module, self.ignore_submodules
+    #         )
+    #         yield from apis
 
     def get_public_apis(self, module_name: str) -> list[SignatureInfo]:
         """Extract all public APIs from a module.

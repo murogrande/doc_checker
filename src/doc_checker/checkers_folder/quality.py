@@ -1,13 +1,61 @@
-"""LLM-powered documentation quality checker."""
-
 from __future__ import annotations
 
 from pathlib import Path
 
-from .code_analyzer import CodeAnalyzer
-from .llm_backends import get_backend
-from .models import QualityIssue
-from .prompts import get_combined_quality_prompt
+from doc_checker.llm_backends import get_backend
+from doc_checker.models import DriftReport, QualityIssue
+from doc_checker.prompts import get_combined_quality_prompt
+from doc_checker.utils.code_analyzer import CodeAnalyzer
+
+from .base import Checker
+
+
+class LLMQualityChecker(Checker):
+    """LLM-based docstring quality analysis.
+
+    Supports ollama and openai backends. Checks docstring completeness,
+    clarity, and accuracy for public APIs.
+    """
+
+    def __init__(
+        self,
+        root_path: Path,
+        modules: list[str],
+        ignore_submodules: set[str],
+        backend_type: str = "ollama",
+        model: str | None = None,
+        api_key: str | None = None,
+        sample_rate: float = 1.0,
+        verbose: bool = False,
+    ):
+        self.root_path = root_path
+        self.modules = modules
+        self.ignore_submodules = ignore_submodules
+        self.backend_type = backend_type
+        self.model = model
+        self.api_key = api_key
+        self.sample_rate = sample_rate
+        self.verbose = verbose
+
+    def check(self, report: DriftReport) -> None:
+        """Run LLM quality checks; skip with warning if deps missing."""
+        try:
+            checker = QualityChecker(
+                self.root_path,
+                self.backend_type,
+                self.model,
+                self.api_key,
+                ignore_submodules=self.ignore_submodules,
+            )
+        except (ImportError, RuntimeError, ValueError) as e:
+            report.warnings.append(f"Quality checks skipped: {e}")
+            return
+        if self.verbose:
+            print(f"LLM quality checks ({self.backend_type}, {checker.backend.model})...")
+        for module in self.modules:
+            report.quality_issues.extend(
+                checker.check_module_quality(module, self.verbose, self.sample_rate)
+            )
 
 
 class QualityChecker:
